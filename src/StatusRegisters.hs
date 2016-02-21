@@ -53,19 +53,19 @@ data GeneralPurposeRegisters = GeneralPurposeRegisters
 
 data StatusRegisters = StatusRegisters
   {
-    statusRegisters_ConditionCodeFlags :: ConditionCodeFlags,
-    statusRegisters_IRQInterruptMask :: Bool,
-    statusRegisters_FIQInterruptMask :: Bool,
-    statusRegisters_ThumbStateFlag :: Bool,
-    statusRegisters_ProcessorMode :: ProcessorMode
+    conditionCodeFlags :: ConditionCodeFlags,
+    irqInterruptMask :: Bool,
+    fiqInterruptMask  :: Bool,
+    thumbStateFlag :: Bool,
+    processorMode :: ProcessorMode
   }
 
 data ConditionCodeFlags = ConditionCodeFlags
   {
-    conditionCodeFlag_N :: Bool,
-    conditionCodeFlag_Z :: Bool,
-    conditionCodeFlag_C :: Bool,
-    conditionCodeFlag_V :: Bool
+    n :: Bool,
+    z :: Bool,
+    c :: Bool,
+    v :: Bool
   }
 
 data ProcessorMode = User | FIQ | IRQ | Supervisor | Abort | Undefined | System
