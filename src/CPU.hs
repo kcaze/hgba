@@ -4,18 +4,6 @@ import qualified Data.Map.Strict as Map
 import Types
 import Processor
 
-data CPU = CPU
-  {
-    registers :: GeneralPurposeRegisters,
-    cpsr :: StatusRegisters,
-    spsr_abt :: StatusRegisters,
-    spsr_fiq :: StatusRegisters,
-    spsr_irq :: StatusRegisters,
-    spsr_svc :: StatusRegisters,
-    spsr_und :: StatusRegisters,
-    memory :: AddressSpace
-  } deriving Show
-
 reset :: CPU -> CPU
 reset cpu = cpu { 
               registers = (registers cpu)
@@ -42,6 +30,7 @@ powerUp = reset $ CPU
     spsr_irq = sr,
     spsr_svc = sr,
     spsr_und = sr,
+    pipeline = p,
     memory = m
   }
   where r = GeneralPurposeRegisters 0 0 0 0 0 0 0 0
@@ -56,4 +45,5 @@ powerUp = reset $ CPU
             thumbStateFlag = False,
             processorMode = User
           }
+        p = Pipeline Nothing Nothing
         m = Map.empty

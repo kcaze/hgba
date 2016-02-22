@@ -1,26 +1,14 @@
 module Instruction where
 
+import Data.Bits
+import Data.Word
 import Prelude hiding (EQ, LT, GT, not, (&&), (||))
-import Boolean as B
-import Processor
 
-data ConditionCode = EQ | 
-                     NE |
-                     CS |
-                     HS |
-                     CC |
-                     LO |
-                     MI |
-                     PL |
-                     VS |
-                     VC |
-                     HI |
-                     LS |
-                     GE |
-                     LT |
-                     GT |
-                     LE |
-                     AL
+import Boolean as B
+import Util as U
+import Types
+import Register
+import CPU
 
 cond :: ConditionCode -> ConditionCodeFlags -> Bool
 cond EQ = z
@@ -41,56 +29,22 @@ cond GT = not z && (n `eq` v)
 cond LE = z || (n `neq` v)
 cond AL = true
 
-data Instruction = Instruction ConditionCode RawInstruction
-data RawInstruction = ADC     |
-                      ADD     |
-                      AND     |
-                      B       |
-                      BIC     |
-                      BL      |
-                      BX      |
-                      CDP     |
-                      CMN     |
-                      CMP     |
-                      EOR     |
-                      LDC     |
-                      LDM1    |
-                      LDM2    |
-                      LDM3    |
-                      LDR     |
-                      LDRB    |
-                      LDRBT   |
-                      LDRH    |
-                      LDRSB   |
-                      LDRSH   |
-                      LDRT    |
-                      MCR     |
-                      MLA     |
-                      MOV     |
-                      MRC     |
-                      MRS     |
-                      MSR     |
-                      MUL     |
-                      MVN     |
-                      ORR     |
-                      RSB     |
-                      RSC     |
-                      SBC     |
-                      SMLAL   |
-                      SMULL   |
-                      STC     |
-                      STM1    |
-                      STM2    |
-                      STR     |
-                      STRB    |
-                      STRBT   |
-                      STRH    |
-                      STRT    |
-                      SUB     |
-                      SWI     |
-                      SWP     |
-                      SWPB    |
-                      TEQ     |
-                      TST     |
-                      UMLAL   |
-                      UMULL
+instructionSize :: CPU -> Word32
+instructionSize cpu
+  | thumb = 4
+  | otherwise = 8
+  where thumb = thumbStateFlag . cpsr $ cpu
+
+executeInstruction :: CPU -> Instruction -> CPU
+cpu `executeInstruction` (Instruction condition rawInstruction)
+  | cond condition (getConditionCodeFlags cpu) = cpu `executeRawInstruction` rawInstruction
+  | otherwise = cpu
+
+executeRawInstruction :: CPU -> RawInstruction -> CPU
+-- Branch instructions.
+cpu `executeRawInstruction` (B link target_address)
+  | link = cpu `setR14` lr' `setR15` pc'
+  | otherwise = cpu `setR15` pc'
+  where target_address' = shiftL (U.signExtend 24 30 target_address) 2
+        pc' = getR15 cpu + target_address'
+        lr' = getR15 cpu - (if (thumb cpu) then 4 else 8)
