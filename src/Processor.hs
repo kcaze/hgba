@@ -1,15 +1,6 @@
-module StatusRegisters where
+module Processor where
 
-import qualified Data.Map.Strict as Map
-import Data.Word
-
-type Byte = Word8
-type Halfword = Word16
-type Word = Word32
-type Address = Word32
-
-type Register = Word32
-type AddressSpace = Map.Map Address Byte
+import Types
 
 data GeneralPurposeRegisters = GeneralPurposeRegisters
   {
@@ -49,7 +40,7 @@ data GeneralPurposeRegisters = GeneralPurposeRegisters
 
     -- Program counter.
     pc :: Register
-  }
+  } deriving (Eq, Show)
 
 data StatusRegisters = StatusRegisters
   {
@@ -58,7 +49,7 @@ data StatusRegisters = StatusRegisters
     fiqInterruptMask  :: Bool,
     thumbStateFlag :: Bool,
     processorMode :: ProcessorMode
-  }
+  } deriving (Eq, Show)
 
 data ConditionCodeFlags = ConditionCodeFlags
   {
@@ -66,6 +57,13 @@ data ConditionCodeFlags = ConditionCodeFlags
     z :: Bool,
     c :: Bool,
     v :: Bool
-  }
+  } deriving (Eq, Show)
 
-data ProcessorMode = User | FIQ | IRQ | Supervisor | Abort | Undefined | System
+data ProcessorMode = User       |
+                     FIQ        |
+                     IRQ        |
+                     Supervisor |
+                     Abort      |
+                     Undefined  |
+                     System
+  deriving (Eq, Show)

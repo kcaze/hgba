@@ -2,7 +2,7 @@ module Instruction where
 
 import Prelude hiding (EQ, LT, GT, not, (&&), (||))
 import Boolean as B
-import StatusRegisters
+import Processor
 
 data ConditionCode = EQ | 
                      NE |
