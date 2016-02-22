@@ -4,11 +4,10 @@ import Data.Bits
 import Data.Word
 import Prelude hiding (EQ, LT, GT, not, (&&), (||))
 
-import Boolean as B
-import Util as U
+import Boolean
+import Util
 import Types
 import Register
-import CPU
 
 cond :: ConditionCode -> ConditionCodeFlags -> Bool
 cond EQ = z
@@ -45,6 +44,6 @@ executeRawInstruction :: CPU -> RawInstruction -> CPU
 cpu `executeRawInstruction` (B link target_address)
   | link = cpu `setR14` lr' `setR15` pc'
   | otherwise = cpu `setR15` pc'
-  where target_address' = shiftL (U.signExtend 24 30 target_address) 2
+  where target_address' = shiftL (signExtend 24 30 target_address) 2
         pc' = getR15 cpu + target_address'
         lr' = getR15 cpu - (if (thumb cpu) then 4 else 8)
