@@ -28,9 +28,11 @@ decodeCond w = decodeCond' (w `shiftR` 28)
 decodeInstruction :: Word32 -> Maybe Instruction
 decodeInstruction x
   | testMask x 0x0A000000 = d decodeB
+  | testMask x 0x012FFF10 = d decodeBX
   | otherwise = Nothing
   where condition = decodeCond x
         d :: (Word32 -> RawInstruction) -> Maybe Instruction
         d f = Just $ Instruction condition (f x)
 
 decodeB x = B (x `testBit` 24) (x .&. 0x00FFFFFF)
+decodeBX x = BX (x .&. 0x0000000F)

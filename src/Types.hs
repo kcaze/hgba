@@ -32,12 +32,12 @@ data ConditionCode = EQ |
                      AL
   deriving (Eq, Show)
 
-data RawInstruction =   ADC
+data RawInstruction =   ADC Bool Bool Word32 Word32 Word32
                       | ADD
                       | AND
                       | B Bool Word32
                       | BIC
-                      | BX
+                      | BX Word32
                       | CDP
                       | CMN
                       | CMP
@@ -84,6 +84,18 @@ data RawInstruction =   ADC
                       | UMLAL
                       | UMULL
   deriving (Eq, Show)
+
+data AddressMode1 =   AddressMode1_1 Word32 Word32 -- #<rotate_imm> #<immed_8>
+                    | AddressMode1_2 Word32 -- <Rm>
+                    | AddressMode1_3 Word32 Word32 -- <Rm>, LSL #<shift_imm>
+                    | AddressMode1_4 Word32 Word32 -- <Rm>, LSL <Rs>
+                    | AddressMode1_5 Word32 Word32 -- <Rm>, LSR <#shift_imm>
+                    | AddressMode1_6 Word32 Word32 -- <Rm>, LSR <Rs>
+                    | AddressMode1_7 Word32 Word32 -- <Rm>, ASR <#shift_imm>
+                    | AddressMode1_8 Word32 Word32 -- <Rm>, ASR <Rs>
+                    | AddressMode1_9 Word32 Word32 -- <Rm>, ROR <#shift_imm>
+                    | AddressMode1_10 Word32 Word32 -- <Rm>, ROR <Rs>
+                    | AddressMode1_11 Word32 -- <Rm>, RRX
 
 data GeneralPurposeRegisters = GeneralPurposeRegisters
   {

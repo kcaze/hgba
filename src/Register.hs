@@ -6,11 +6,23 @@ module Register ( getR0, getR1, getR2, getR3
                 , setR4, setR5, setR6, setR7
                 , setR8, setR9, setR10, setR11
                 , setR12, setR13, setR14, setR15
+                , getRegister
+                , setRegister
                 , getConditionCodeFlags
                 , setConditionCodeFlags
                 , getProcessorMode
                 , setProcessorMode
-                , thumb)
+                , getThumbStateFlag
+                , setThumbStateFlag
+                , getNFlag
+                , setNFlag
+                , getZFlag
+                , setZFlag
+                , getCFlag
+                , setCFlag
+                , getVFlag
+                , setVFlag
+                )
                 where
 
 import Types
@@ -147,7 +159,16 @@ getConditionCodeFlags :: CPU -> ConditionCodeFlags
 setConditionCodeFlags :: ConditionCodeFlags -> CPU -> CPU
 getProcessorMode :: CPU -> ProcessorMode
 setProcessorMode :: ProcessorMode -> CPU -> CPU
-thumb :: CPU -> Bool
+getThumbStateFlag :: CPU -> Bool
+setThumbStateFlag :: CPU -> Bool -> CPU
+getNFlag :: CPU -> Bool
+setNFlag :: CPU -> Bool -> CPU
+getZFlag :: CPU -> Bool
+setZFlag :: CPU -> Bool -> CPU
+getCFlag :: CPU -> Bool
+setCFlag :: CPU -> Bool -> CPU
+getVFlag :: CPU -> Bool
+setVFlag :: CPU -> Bool -> CPU
 
 getConditionCodeFlags = conditionCodeFlags . cpsr
 setConditionCodeFlags flags cpu = cpu { cpsr = cpsr' }
@@ -157,4 +178,26 @@ getProcessorMode = processorMode . cpsr
 setProcessorMode mode cpu = cpu { cpsr = cpsr' }
   where cpsr' = (cpsr cpu) { processorMode = mode }
 
-thumb = thumbStateFlag . cpsr
+getThumbStateFlag = thumbStateFlag . cpsr
+setThumbStateFlag cpu flag = cpu { cpsr = cpsr' }
+  where cpsr' = (cpsr cpu) { thumbStateFlag = flag }
+
+getNFlag = n . conditionCodeFlags . cpsr
+setNFlag cpu flag = cpu { cpsr = cpsr' }
+  where cpsr' = (cpsr cpu) { conditionCodeFlags = flags }
+        flags = (conditionCodeFlags . cpsr $ cpu) { n = flag }
+
+getZFlag = z . conditionCodeFlags . cpsr
+setZFlag cpu flag = cpu { cpsr = cpsr' }
+  where cpsr' = (cpsr cpu) { conditionCodeFlags = flags }
+        flags = (conditionCodeFlags . cpsr $ cpu) { z = flag }
+
+getCFlag = c . conditionCodeFlags . cpsr
+setCFlag cpu flag = cpu { cpsr = cpsr' }
+  where cpsr' = (cpsr cpu) { conditionCodeFlags = flags }
+        flags = (conditionCodeFlags . cpsr $ cpu) { c = flag }
+
+getVFlag = v . conditionCodeFlags . cpsr
+setVFlag cpu flag = cpu { cpsr = cpsr' }
+  where cpsr' = (cpsr cpu) { conditionCodeFlags = flags }
+        flags = (conditionCodeFlags . cpsr $ cpu) { v = flag }

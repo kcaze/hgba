@@ -25,7 +25,7 @@ decodeNext cpu = cpu { pipeline = p { execute = execute' } }
 
 incrementPC :: CPU -> CPU
 incrementPC cpu = cpu `R.setR15` pc'
-  where pc' = (R.getR15 cpu) + (if R.thumb cpu then 4 else 8)
+  where pc' = (R.getR15 cpu) + (if R.getThumbStateFlag cpu then 4 else 8)
 
 reset :: CPU -> CPU
 reset cpu = cpu { 
