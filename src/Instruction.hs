@@ -46,11 +46,21 @@ cpu `executeRawInstruction` (B link target_address)
   where target_address' = shiftL (signExtend 24 30 target_address) 2
         pc' = getR15 cpu + target_address'
         lr' = getR15 cpu - (if (getThumbStateFlag cpu) then 4 else 8)
-cpu `executeRawInstruction` (BX rm) = cpu `setThumbStateFlag` thumbStateFlag' `setR15` pc'
+cpu `executeRawInstruction` (BX rm) = cpu'
   where thumbStateFlag' = testBit rm 0
-        pc' = (getRegister (fromIntegral rm) cpu) .&. 0xFFFFFFFE
-cpu `executeRawInstruction` (AND sbit rn rd addressMode) =
-  where (operand, carry_out) = evalAddressMode1 addressMode
+        pc' = (cpu `getRegister` rm) .&. 0xFFFFFFFE
+        cpu' = cpu `setThumbStateFlag` thumbStateFlag' `setR15` pc'
+cpu `executeRawInstruction` (AND sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rd' = (cpu `getRegister` rn) .&. shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (shifter_carry_out)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
         
 -- Data processing instructions.
 
@@ -62,11 +72,11 @@ evalAddressMode1 (AddressMode1_1 rotate_imm immed_8) cpu = (operand, carry_out)
           | rotate_imm == 0 = getCFlag cpu
           | otherwise = testBit operand 31
 evalAddressMode1 (AddressMode1_2 rm) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
+  where rm' = cpu `getRegister` rm
         operand = rm'
         carry_out = getCFlag cpu
 evalAddressMode1 (AddressMode1_3 rm shift_imm) cpu = (operand, carry_out) 
-  where rm' = getRegister (fromIntegral rm) cpu
+  where rm' = cpu `getRegister` rm
         operand
           | shift_imm == 0 = rm'
           | otherwise = rm' `logicalShiftL` (fromIntegral shift_imm)
@@ -74,8 +84,8 @@ evalAddressMode1 (AddressMode1_3 rm shift_imm) cpu = (operand, carry_out)
           | shift_imm == 0 = getCFlag cpu
           | otherwise = testBit rm' (fromIntegral $ 32 - shift_imm)
 evalAddressMode1 (AddressMode1_4 rm rs) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
-        rs' = (getRegister (fromIntegral rs) cpu) .&. 0x000000FF
+  where rm' = cpu `getRegister` rm
+        rs' = (cpu `getRegister` rs) .&. 0x000000FF
         operand
           | rs' == 0 = rm'
           | rs' < 32 = rm' `logicalShiftL` (fromIntegral rs')
@@ -86,7 +96,7 @@ evalAddressMode1 (AddressMode1_4 rm rs) cpu = (operand, carry_out)
           | rs' == 32 = testBit rm' 0
           | otherwise = False
 evalAddressMode1 (AddressMode1_5 rm shift_imm) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
+  where rm' = cpu `getRegister` rm
         operand
           | shift_imm == 0 = 0
           | otherwise = rm' `logicalShiftR` (fromIntegral shift_imm)
@@ -94,8 +104,8 @@ evalAddressMode1 (AddressMode1_5 rm shift_imm) cpu = (operand, carry_out)
           | shift_imm == 0 = testBit rm' 31
           | otherwise = testBit rm' (fromIntegral shift_imm - 1)
 evalAddressMode1 (AddressMode1_6 rm rs) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
-        rs' = (getRegister (fromIntegral rs) cpu) .&. 0x000000FF
+  where rm' = cpu `getRegister` rm
+        rs' = (cpu `getRegister` rs) .&. 0x000000FF
         operand
           | rs' == 0 = rm'
           | rs' < 32 = rm' `logicalShiftR` (fromIntegral rs')
@@ -106,7 +116,7 @@ evalAddressMode1 (AddressMode1_6 rm rs) cpu = (operand, carry_out)
           | rs' == 32 = testBit rm' 31
           | otherwise = False
 evalAddressMode1 (AddressMode1_7 rm shift_imm) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
+  where rm' = cpu `getRegister` rm
         operand
           | shift_imm == 0 && not (testBit rm' 31) = 0
           | shift_imm == 0 && testBit rm' 31 = 0xFFFFFFFF
@@ -115,8 +125,8 @@ evalAddressMode1 (AddressMode1_7 rm shift_imm) cpu = (operand, carry_out)
           | shift_imm == 0 = testBit rm' 31
           | otherwise = testBit rm' (fromIntegral shift_imm - 1)
 evalAddressMode1 (AddressMode1_8 rm rs) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
-        rs' = (getRegister (fromIntegral rs) cpu) .&. 0x000000FF
+  where rm' = cpu `getRegister` rm
+        rs' = (cpu `getRegister` rs) .&. 0x000000FF
         operand
           | rs' == 0 = rm'
           | rs' < 32 = rm' `arithmeticShiftR` (fromIntegral rs')
@@ -129,13 +139,13 @@ evalAddressMode1 (AddressMode1_8 rm rs) cpu = (operand, carry_out)
 evalAddressMode (AddressMode1_9 rm shift_imm) cpu
   | shift_imm == 0 = evalAddressMode (AddressMode1_11 rm) cpu
   | otherwise = (operand, carry_out)
-    where rm' = getRegister (fromIntegral rm) cpu
+    where rm' = cpu `getRegister` rm
           operand = rm' `rotateR` (fromIntegral shift_imm)
           carry_out = testBit rm' (fromIntegral shift_imm - 1)
 evalAddressMode (AddressMode1_10 rm rs) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
-        rs' = (getRegister (fromIntegral rs) cpu) .&. 0x000000FF
-        rs'' = (getRegister (fromIntegral rs) cpu) .&. 0x0000001F
+  where rm' = cpu `getRegister` rm
+        rs' = (cpu `getRegister` rs) .&. 0x000000FF
+        rs'' = (cpu `getRegister` rs) .&. 0x0000001F
         operand
           | rs' == 0 = rm'
           | rs'' == 0 = rm'
@@ -145,7 +155,7 @@ evalAddressMode (AddressMode1_10 rm rs) cpu = (operand, carry_out)
           | rs'' == 0 = testBit rm' 31
           | otherwise = testBit rm' (fromIntegral rs'' - 1)
 evalAddressMode (AddressMode1_11 rm) cpu = (operand, carry_out)
-  where rm' = getRegister (fromIntegral rm) cpu
+  where rm' = cpu `getRegister` rm
         cbit = if getCFlag cpu then 1 else 0
         operand = (cbit `logicalShiftL` 31) .|. (rm' `logicalShiftR` 1)
         carry_out = testBit rm' 0

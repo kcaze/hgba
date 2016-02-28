@@ -23,7 +23,7 @@ decodeCond w = decodeCond' (w `shiftR` 28)
         decodeCond' 0xC = GT
         decodeCond' 0xD = LE
         decodeCond' 0xE = AL
-        decodeCond' 0xF = AL -- 0b1111 is technically undefined
+        decodeCond' 0xF = undefined
 
 decodeInstruction :: Word32 -> Maybe Instruction
 decodeInstruction x
@@ -35,4 +35,4 @@ decodeInstruction x
         d f = Just $ Instruction condition (f x)
 
 decodeB x = B (x `testBit` 24) (x .&. 0x00FFFFFF)
-decodeBX x = BX (x .&. 0x0000000F)
+decodeBX x = BX (fromIntegral $ x .&. 0x0000000F)

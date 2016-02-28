@@ -7,7 +7,7 @@ import Data.Bits
 
 type Byte = Word8
 type Address = Word32
-type Register = Word32
+type Register = Int
 type AddressSpace = Map.Map Address Byte
 
 data Instruction = Instruction ConditionCode RawInstruction
@@ -32,12 +32,12 @@ data ConditionCode = EQ |
                      AL
   deriving (Eq, Show)
 
-data RawInstruction =   ADC Bool Bool Word32 Word32 Word32
+data RawInstruction =   ADC
                       | ADD
-                      | AND Bool Word32 Word32 AddressMode1
+                      | AND Bool Register Register AddressMode1
                       | B Bool Word32
                       | BIC
-                      | BX Word32
+                      | BX Register
                       | CDP
                       | CMN
                       | CMP
@@ -86,55 +86,56 @@ data RawInstruction =   ADC Bool Bool Word32 Word32 Word32
   deriving (Eq, Show)
 
 data AddressMode1 =   AddressMode1_1 Word32 Word32 -- #<rotate_imm> #<immed_8>
-                    | AddressMode1_2 Word32 -- <Rm>
-                    | AddressMode1_3 Word32 Word32 -- <Rm>, LSL #<shift_imm>
-                    | AddressMode1_4 Word32 Word32 -- <Rm>, LSL <Rs>
-                    | AddressMode1_5 Word32 Word32 -- <Rm>, LSR <#shift_imm>
-                    | AddressMode1_6 Word32 Word32 -- <Rm>, LSR <Rs>
-                    | AddressMode1_7 Word32 Word32 -- <Rm>, ASR <#shift_imm>
-                    | AddressMode1_8 Word32 Word32 -- <Rm>, ASR <Rs>
-                    | AddressMode1_9 Word32 Word32 -- <Rm>, ROR <#shift_imm>
-                    | AddressMode1_10 Word32 Word32 -- <Rm>, ROR <Rs>
-                    | AddressMode1_11 Word32 -- <Rm>, RRX
+                    | AddressMode1_2 Register -- <Rm>
+                    | AddressMode1_3 Register Word32 -- <Rm>, LSL #<shift_imm>
+                    | AddressMode1_4 Register Register -- <Rm>, LSL <Rs>
+                    | AddressMode1_5 Register Word32 -- <Rm>, LSR <#shift_imm>
+                    | AddressMode1_6 Register Register -- <Rm>, LSR <Rs>
+                    | AddressMode1_7 Register Word32 -- <Rm>, ASR <#shift_imm>
+                    | AddressMode1_8 Register Register -- <Rm>, ASR <Rs>
+                    | AddressMode1_9 Register Word32 -- <Rm>, ROR <#shift_imm>
+                    | AddressMode1_10 Register Register -- <Rm>, ROR <Rs>
+                    | AddressMode1_11 Register -- <Rm>, RRX
+  deriving (Eq, Show)
 
 data GeneralPurposeRegisters = GeneralPurposeRegisters
   {
     -- Unbanked registers.
-    r0 :: Register,
-    r1 :: Register,
-    r2 :: Register,
-    r3 :: Register,
-    r4 :: Register,
-    r5 :: Register,
-    r6 :: Register,
-    r7 :: Register,
+    r0 :: Word32,
+    r1 :: Word32,
+    r2 :: Word32,
+    r3 :: Word32,
+    r4 :: Word32,
+    r5 :: Word32,
+    r6 :: Word32,
+    r7 :: Word32,
 
     -- Banked registers.
-    r8        :: Register,
-    r8_fiq    :: Register,
-    r9        :: Register,
-    r9_fiq    :: Register,
-    r10       :: Register,
-    r10_fiq   :: Register,
-    r11       :: Register,
-    r11_fiq   :: Register,
-    r12       :: Register,
-    r12_fiq   :: Register,
-    r13       :: Register,
-    r13_svc   :: Register,
-    r13_abt   :: Register,
-    r13_und   :: Register,
-    r13_irq   :: Register,
-    r13_fiq   :: Register,
-    r14       :: Register,
-    r14_svc   :: Register,
-    r14_abt   :: Register,
-    r14_und   :: Register,
-    r14_irq   :: Register,
-    r14_fiq   :: Register,
+    r8        :: Word32,
+    r8_fiq    :: Word32,
+    r9        :: Word32,
+    r9_fiq    :: Word32,
+    r10       :: Word32,
+    r10_fiq   :: Word32,
+    r11       :: Word32,
+    r11_fiq   :: Word32,
+    r12       :: Word32,
+    r12_fiq   :: Word32,
+    r13       :: Word32,
+    r13_svc   :: Word32,
+    r13_abt   :: Word32,
+    r13_und   :: Word32,
+    r13_irq   :: Word32,
+    r13_fiq   :: Word32,
+    r14       :: Word32,
+    r14_svc   :: Word32,
+    r14_abt   :: Word32,
+    r14_und   :: Word32,
+    r14_irq   :: Word32,
+    r14_fiq   :: Word32,
 
     -- Program counter.
-    pc :: Register
+    pc :: Word32
   } deriving (Eq, Show)
 
 data StatusRegisters = StatusRegisters
