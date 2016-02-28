@@ -49,6 +49,10 @@ cpu `executeRawInstruction` (B link target_address)
 cpu `executeRawInstruction` (BX rm) = cpu `setThumbStateFlag` thumbStateFlag' `setR15` pc'
   where thumbStateFlag' = testBit rm 0
         pc' = (getRegister (fromIntegral rm) cpu) .&. 0xFFFFFFFE
+cpu `executeRawInstruction` (AND sbit rn rd addressMode) =
+  where (operand, carry_out) = evalAddressMode1 addressMode
+        
+-- Data processing instructions.
 
 -- Returns (shifter_operand, shifter_carry_out)
 evalAddressMode1 :: AddressMode1 -> CPU -> (Word32, Bool)

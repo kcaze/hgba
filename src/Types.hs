@@ -34,7 +34,7 @@ data ConditionCode = EQ |
 
 data RawInstruction =   ADC Bool Bool Word32 Word32 Word32
                       | ADD
-                      | AND
+                      | AND Bool Word32 Word32 AddressMode1
                       | B Bool Word32
                       | BIC
                       | BX Word32
