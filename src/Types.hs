@@ -57,8 +57,8 @@ data RawInstruction =   ADC Bool Register Register AddressMode1
                       | MLA Bool Register Register Register Register
                       | MOV Bool Register AddressMode1
                       | MRC
-                      | MRS
-                      | MSR
+                      | MRS Bool Register
+                      | MSR Bool Word32 AddressMode1
                       | MUL Bool Register Register Register
                       | MVN Bool Register AddressMode1
                       | ORR Bool Register Register AddressMode1
@@ -138,7 +138,7 @@ data GeneralPurposeRegisters = GeneralPurposeRegisters
     pc :: Word32
   } deriving (Eq, Show)
 
-data StatusRegisters = StatusRegisters
+data StatusRegister = StatusRegister
   {
     conditionCodeFlags :: ConditionCodeFlags,
     irqInterruptMask :: Bool,
@@ -173,12 +173,12 @@ data Pipeline = Pipeline
 data CPU = CPU
   {
     registers :: GeneralPurposeRegisters,
-    cpsr :: StatusRegisters,
-    spsr_abt :: StatusRegisters,
-    spsr_fiq :: StatusRegisters,
-    spsr_irq :: StatusRegisters,
-    spsr_svc :: StatusRegisters,
-    spsr_und :: StatusRegisters,
+    cpsr :: StatusRegister,
+    spsr_abt :: StatusRegister,
+    spsr_fiq :: StatusRegister,
+    spsr_irq :: StatusRegister,
+    spsr_svc :: StatusRegister,
+    spsr_und :: StatusRegister,
     pipeline :: Pipeline,
     memory :: AddressSpace
   } deriving Show

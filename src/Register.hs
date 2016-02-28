@@ -26,10 +26,13 @@ module Register ( getR0, getR1, getR2, getR3
                 , setCFlag
                 , getVFlag
                 , setVFlag
+                , statusRegisterToWord32
+                , word32ToStatusRegister
                 )
                 where
 
 import Data.Word
+import Data.Bits
 import Types
 
 -- General purpose register getters and setters.
@@ -160,10 +163,10 @@ setRegister cpu 14 x = cpu { registers = registers' }
 setRegister cpu 15 x = cpu { registers = (registers cpu) { pc = x } }
 
 -- Current program status register getters and setters
-getCPSR :: CPU -> StatusRegisters
-setCPSR :: CPU -> StatusRegisters -> CPU
-getSPSR :: CPU -> StatusRegisters
-setSPSR :: CPU -> StatusRegisters -> CPU
+getCPSR :: CPU -> StatusRegister
+setCPSR :: CPU -> StatusRegister -> CPU
+getSPSR :: CPU -> StatusRegister
+setSPSR :: CPU -> StatusRegister -> CPU
 getConditionCodeFlags :: CPU -> ConditionCodeFlags
 setConditionCodeFlags :: ConditionCodeFlags -> CPU -> CPU
 getProcessorMode :: CPU -> ProcessorMode
@@ -228,3 +231,53 @@ getVFlag = v . conditionCodeFlags . cpsr
 setVFlag cpu flag = cpu { cpsr = cpsr' }
   where cpsr' = (cpsr cpu) { conditionCodeFlags = flags }
         flags = (conditionCodeFlags . cpsr $ cpu) { v = flag }
+
+statusRegisterToWord32 :: StatusRegister -> Word32
+word32ToStatusRegister :: Word32 -> StatusRegister
+
+statusRegisterToWord32 sr = nb .|. zb .|. cb .|. vb .|. ib .|. fb .|. tb .|. mb
+  where nb = if (n . conditionCodeFlags $ sr) then bit 31 else 0
+        zb = if (z . conditionCodeFlags $ sr) then bit 30 else 0
+        cb = if (c . conditionCodeFlags $ sr) then bit 29 else 0
+        vb = if (c . conditionCodeFlags $ sr) then bit 28 else 0
+        ib = if (irqInterruptMask sr) then bit 7 else 0
+        fb = if (fiqInterruptMask sr) then bit 6 else 0
+        tb = if (thumbStateFlag sr) then bit 5 else 0
+        mb = case (processorMode sr) of
+               User        -> 0x10
+               FIQ         -> 0x11
+               IRQ         -> 0x12
+               Supervisor  -> 0x13
+               Abort       -> 0x17
+               Undefined   -> 0x1B
+               System      -> 0x1F
+
+word32ToStatusRegister w = StatusRegister
+                             {
+                               conditionCodeFlags = ConditionCodeFlags
+                                 {
+                                   n = n',
+                                   z = z',
+                                   c = c',
+                                   v = v'
+                                 },
+                               irqInterruptMask = irq',
+                               fiqInterruptMask = fiq',
+                               thumbStateFlag = thumb',
+                               processorMode = mode'
+                             }
+  where n' = testBit w 31
+        z' = testBit w 30
+        c' = testBit w 29
+        v' = testBit w 28
+        irq' = testBit w 7
+        fiq' = testBit w 6
+        thumb' = testBit w 5
+        mode' = case (w .&. 0x1F) of
+                  0x10 -> User
+                  0x11 -> FIQ
+                  0x12 -> IRQ
+                  0x13 -> Supervisor
+                  0x17 -> Abort
+                  0x1B -> Undefined
+                  0x1F -> System

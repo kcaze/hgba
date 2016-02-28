@@ -60,7 +60,7 @@ powerUp = reset $ CPU
                                     0 0 0 0 0 0 0 0
                                     0 0 0 0 0 0 0 0
                                     0 0 0 0 0 0 0
-        sr = StatusRegisters
+        sr = StatusRegister
           {
             conditionCodeFlags = ConditionCodeFlags False False False False,
             irqInterruptMask = False,

@@ -302,6 +302,31 @@ cpu `executeRawInstruction` (UMLAL sbit rdlo rdhi rm rs) = cpu''
         cpu' = setRegister cpu rdhi rdhi''
         cpu'' = setRegister cpu' rdlo rdlo''
                 `setCPSR` cpsr'
+
+-- Status register access instructions
+cpu `executeRawInstruction` (MRS rbit rd) = cpu'
+  where rd'
+          | rbit = statusRegisterToWord32 . getSPSR $ cpu
+          | otherwise = statusRegisterToWord32 . getCPSR $ cpu
+        cpu' = setRegister cpu rd rd'
+cpu `executeRawInstruction` (MSR1 rbit field_mask addressMode) = cpu'
+  where (operand, _)= evalAddressMode1 addressMode
+        byte_mask = (if (testBit field_mask 0) then 0x000000FF else 0) .|.
+                    (if (testBit field_mask 1) then 0x0000FF00 else 0) .|.
+                    (if (testBit field_mask 2) then 0x00FF0000 else 0) .|.
+                    (if (testBit field_mask 3) then 0xFF000000 else 0)
+        userMask  = 0xF0000000
+        privMask  = 0x0000000F
+        stateMask = 0x00000020
+        inAPrivilegedMode = getProcessorMode cpu /= User
+        mask
+          | not rbit && inAPrivilegedMode = byte_mask .&. (userMask .|. privMask)
+          | not rbit = byte_mask .&. userMask
+          | otherwise = byte_mask .&. (userMask .|. privMask .|. stateMask)
+        cpsrWord32 = statusRegisterToWord32 . getCPSR $ cpu
+        cpsr' = (cpsrWord32 .&. complement mask)
+        cpu'
+          | cpu `setCPSR` setRegister cpu rd rd'
         
 
 -- Addressing Mode 1 - Data-processing operands
