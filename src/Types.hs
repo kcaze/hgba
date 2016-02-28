@@ -2,6 +2,7 @@ module Types where
 
 import qualified Data.Map.Strict as Map
 import Prelude hiding (EQ, LT, GT)
+import Control.Applicative
 import Data.Word
 import Data.Bits
 
@@ -10,8 +11,14 @@ type Address = Word32
 type Register = Int
 type AddressSpace = Map.Map Address Byte
 
+type Get a = CPU -> a
+type Set a = CPU -> a -> CPU
+
 data Instruction = Instruction ConditionCode RawInstruction
   deriving (Eq, Show)
+
+(/+/) :: (Num a) => Get a -> Get a -> Get a
+(/+/) = liftA2 (+)
 
 data ConditionCode = EQ | 
                      NE |
