@@ -2,6 +2,7 @@ module Instruction where
 
 import Data.Bits
 import Data.Word
+import Data.Int
 import Prelude hiding (EQ, LT, GT, not, (&&), (||))
 
 import Boolean
@@ -50,6 +51,7 @@ cpu `executeRawInstruction` (BX rm) = cpu'
   where thumbStateFlag' = testBit rm 0
         pc' = (cpu `getRegister` rm) .&. 0xFFFFFFFE
         cpu' = cpu `setThumbStateFlag` thumbStateFlag' `setR15` pc'
+-- Data processing instructions.
 cpu `executeRawInstruction` (AND sbit rd rn addressMode) = cpu'
   where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
         rd' = (cpu `getRegister` rn) .&. shifter_operand
@@ -225,9 +227,84 @@ cpu `executeRawInstruction` (MVN sbit rd addressMode) = cpu'
           | otherwise = getCPSR cpu
         cpu' = setRegister cpu rd rd'
                `setCPSR` cpsr'
+-- Multiply instructions.
+cpu `executeRawInstruction` (MUL sbit rd rm rs) = cpu'
+  where rd' = (cpu `getRegister` rm) * (cpu `getRegister` rs)
+        cpsr'
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (MLA sbit rd rm rs rn) = cpu'
+  where rd' = (cpu `getRegister` rm) * (cpu `getRegister` rs) + (cpu `getRegister` rn)
+        cpsr'
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (SMULL sbit rdlo rdhi rm rs) = cpu''
+  where rm' = fromIntegral (cpu `getRegister` rm) :: Int64
+        rs' = fromIntegral (cpu `getRegister` rs) :: Int64
+        rdhi' = fromIntegral $ (rm' * rs') `shiftR` 32 :: Word32
+        rdlo' = fromIntegral $ (rm' * rs') .&. 0xFFFFFFFF :: Word32
+        cpsr'
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rdhi' 31)
+                                 `setZFlag` (rdhi' == 0 && rdlo' == 0)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rdhi rdhi'
+        cpu'' = setRegister cpu' rdlo rdlo'
+                `setCPSR` cpsr'
+cpu `executeRawInstruction` (UMULL sbit rdlo rdhi rm rs) = cpu''
+  where rm' = fromIntegral (cpu `getRegister` rm) :: Word64
+        rs' = fromIntegral (cpu `getRegister` rs) :: Word64
+        rdhi' = fromIntegral $ (rm' * rs') `shiftR` 32 :: Word32
+        rdlo' = fromIntegral $ (rm' * rs') .&. 0xFFFFFFFF :: Word32
+        cpsr'
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rdhi' 31)
+                                 `setZFlag` (rdhi' == 0 && rdlo' == 0)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rdhi rdhi'
+        cpu'' = setRegister cpu' rdlo rdlo'
+                `setCPSR` cpsr'
+cpu `executeRawInstruction` (SMLAL sbit rdlo rdhi rm rs) = cpu''
+  where rm' = fromIntegral (cpu `getRegister` rm) :: Int64
+        rs' = fromIntegral (cpu `getRegister` rs) :: Int64
+        rdlo' = fromIntegral $ (rm' * rs') .&. 0xFFFFFFFF :: Word32
+        rdlo'' = rdlo' + (cpu `getRegister` rdlo)
+        rdhi' = fromIntegral $ (rm' * rs') `shiftR` 32 :: Word32
+        rdhi'' = rdhi' + (cpu `getRegister` rdhi)
+                       + (if carryFrom rdlo' (cpu `getRegister` rdlo)
+                          then 1
+                          else 0)
+        cpsr'
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rdhi' 31)
+                                 `setZFlag` (rdhi' == 0 && rdlo' == 0)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rdhi rdhi''
+        cpu'' = setRegister cpu' rdlo rdlo''
+                `setCPSR` cpsr'
+cpu `executeRawInstruction` (UMLAL sbit rdlo rdhi rm rs) = cpu''
+  where rm' = fromIntegral (cpu `getRegister` rm) :: Word64
+        rs' = fromIntegral (cpu `getRegister` rs) :: Word64
+        rdlo' = fromIntegral $ (rm' * rs') .&. 0xFFFFFFFF :: Word32
+        rdlo'' = rdlo' + (cpu `getRegister` rdlo)
+        rdhi' = fromIntegral $ (rm' * rs') `shiftR` 32 :: Word32
+        rdhi'' = rdhi' + (cpu `getRegister` rdhi)
+                       + (if carryFrom rdlo' (cpu `getRegister` rdlo)
+                          then 1
+                          else 0)
+        cpsr'
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rdhi' 31)
+                                 `setZFlag` (rdhi' == 0 && rdlo' == 0)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rdhi rdhi''
+        cpu'' = setRegister cpu' rdlo rdlo''
+                `setCPSR` cpsr'
         
--- Data processing instructions.
 
+-- Addressing Mode 1 - Data-processing operands
 -- Returns (shifter_operand, shifter_carry_out)
 evalAddressMode1 :: AddressMode1 -> CPU -> (Word32, Bool)
 evalAddressMode1 (AddressMode1_1 rotate_imm immed_8) cpu = (operand, carry_out)

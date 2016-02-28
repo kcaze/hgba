@@ -54,19 +54,19 @@ data RawInstruction =   ADC Bool Register Register AddressMode1
                       | LDRSH
                       | LDRT
                       | MCR
-                      | MLA
+                      | MLA Bool Register Register Register Register
                       | MOV Bool Register AddressMode1
                       | MRC
                       | MRS
                       | MSR
-                      | MUL
+                      | MUL Bool Register Register Register
                       | MVN Bool Register AddressMode1
                       | ORR Bool Register Register AddressMode1
                       | RSB Bool Register Register AddressMode1
                       | RSC Bool Register Register AddressMode1
                       | SBC Bool Register Register AddressMode1
-                      | SMLAL
-                      | SMULL
+                      | SMLAL Bool Register Register Register Register
+                      | SMULL Bool Register Register Register Register
                       | STC
                       | STM1
                       | STM2
@@ -81,8 +81,8 @@ data RawInstruction =   ADC Bool Register Register AddressMode1
                       | SWPB
                       | TEQ Register AddressMode1
                       | TST Register AddressMode1
-                      | UMLAL
-                      | UMULL
+                      | UMLAL Bool Register Register Register Register
+                      | UMULL Bool Register Register Register Register
   deriving (Eq, Show)
 
 data AddressMode1 =   AddressMode1_1 Word32 Word32 -- #<rotate_imm> #<immed_8>
