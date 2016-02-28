@@ -22,3 +22,23 @@ logicalShiftL = shiftL
 
 logicalShiftR :: Word32 -> Int -> Word32
 logicalShiftR = shiftR
+
+carryFrom :: Word32 -> Word32 -> Bool
+carryFrom x y = x' + y' >= 2^32
+  where x' = fromIntegral x :: Integer
+        y' = fromIntegral y :: Integer
+
+borrowFrom :: Word32 -> Word32 -> Bool
+borrowFrom x y = y > x
+
+overflowFromAdd :: Word32 -> Word32 -> Bool
+overflowFromAdd x y = (xsign == ysign) && (xsign /= zsign)
+  where xsign = testBit x 31
+        ysign = testBit y 31
+        zsign = testBit (x + y) 31
+
+overflowFromSub :: Word32 -> Word32 -> Bool
+overflowFromSub x y = (xsign /= ysign) && (xsign /= zsign)
+  where xsign = testBit x 31
+        ysign = testBit y 31
+        zsign = testBit (x - y) 31

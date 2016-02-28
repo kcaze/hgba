@@ -32,16 +32,16 @@ data ConditionCode = EQ |
                      AL
   deriving (Eq, Show)
 
-data RawInstruction =   ADC
-                      | ADD
+data RawInstruction =   ADC Bool Register Register AddressMode1
+                      | ADD Bool Register Register AddressMode1
                       | AND Bool Register Register AddressMode1
                       | B Bool Word32
-                      | BIC
+                      | BIC Bool Register Register AddressMode1
                       | BX Register
                       | CDP
-                      | CMN
-                      | CMP
-                      | EOR
+                      | CMN Register AddressMode1
+                      | CMP Register AddressMode1
+                      | EOR Bool Register Register AddressMode1
                       | LDC
                       | LDM1
                       | LDM2
@@ -55,16 +55,16 @@ data RawInstruction =   ADC
                       | LDRT
                       | MCR
                       | MLA
-                      | MOV
+                      | MOV Bool Register AddressMode1
                       | MRC
                       | MRS
                       | MSR
                       | MUL
-                      | MVN
-                      | ORR
-                      | RSB
-                      | RSC
-                      | SBC
+                      | MVN Bool Register AddressMode1
+                      | ORR Bool Register Register AddressMode1
+                      | RSB Bool Register Register AddressMode1
+                      | RSC Bool Register Register AddressMode1
+                      | SBC Bool Register Register AddressMode1
                       | SMLAL
                       | SMULL
                       | STC
@@ -75,12 +75,12 @@ data RawInstruction =   ADC
                       | STRBT
                       | STRH
                       | STRT
-                      | SUB
+                      | SUB Bool Register Register AddressMode1
                       | SWI
                       | SWP
                       | SWPB
-                      | TEQ
-                      | TST
+                      | TEQ Register AddressMode1
+                      | TST Register AddressMode1
                       | UMLAL
                       | UMULL
   deriving (Eq, Show)

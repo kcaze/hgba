@@ -61,6 +61,170 @@ cpu `executeRawInstruction` (AND sbit rd rn addressMode) = cpu'
           | otherwise = getCPSR cpu
         cpu' = setRegister cpu rd rd'
                `setCPSR` cpsr'
+cpu `executeRawInstruction` (EOR sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rd' = (cpu `getRegister` rn) `xor` shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (shifter_carry_out)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (SUB sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rn' = (cpu `getRegister` rn)
+        rd' = rn' - shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (not $ borrowFrom rn' shifter_operand)
+                                 `setVFlag` (overflowFromSub rn' shifter_operand)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (RSB sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rn' = (cpu `getRegister` rn)
+        rd' = shifter_operand - rn'
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (not $ borrowFrom shifter_operand rn')
+                                 `setVFlag` (overflowFromSub shifter_operand rn')
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (ADD sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rn' = (cpu `getRegister` rn)
+        rd' = rn' + shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (carryFrom rn' shifter_operand)
+                                 `setVFlag` (overflowFromAdd rn' shifter_operand)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (ADC sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        cFlag = if getCFlag cpu then 1 else 0
+        rn' = (cpu `getRegister` rn)
+        rd' = rn' + shifter_operand + cFlag
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (carryFrom rn' (shifter_operand + cFlag))
+                                 `setVFlag` (overflowFromAdd rn' (shifter_operand + cFlag))
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (SBC sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        notCFlag = if getCFlag cpu then 0 else 1
+        rn' = (cpu `getRegister` rn)
+        rd' = rn' - (shifter_operand + notCFlag)
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (not $ borrowFrom rn' (shifter_operand + notCFlag))
+                                 `setVFlag` (overflowFromSub rn' (shifter_operand + notCFlag))
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (RSC sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        notCFlag = if getCFlag cpu then 0 else 1
+        rn' = (cpu `getRegister` rn)
+        rd' = shifter_operand - (rn' + notCFlag)
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (not $ borrowFrom shifter_operand (rn' + notCFlag))
+                                 `setVFlag` (overflowFromSub shifter_operand (rn' + notCFlag))
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (TST rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        alu_out = (cpu `getRegister` rn) .&. shifter_operand
+        cpu' = cpu `setNFlag` (testBit alu_out 31)
+                   `setZFlag` (alu_out == 0)
+                   `setCFlag` (shifter_carry_out)
+cpu `executeRawInstruction` (TEQ rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        alu_out = (cpu `getRegister` rn) `xor` shifter_operand
+        cpu' = cpu `setNFlag` (testBit alu_out 31)
+                   `setZFlag` (alu_out == 0)
+                   `setCFlag` (shifter_carry_out)
+cpu `executeRawInstruction` (CMP rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rn' = cpu `getRegister` rn
+        alu_out = rn' - shifter_operand
+        cpu' = cpu `setNFlag` (testBit alu_out 31)
+                   `setZFlag` (alu_out == 0)
+                   `setCFlag` (not $ borrowFrom rn' shifter_operand)
+                   `setVFlag` (overflowFromSub rn' shifter_operand)
+cpu `executeRawInstruction` (CMN rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rn' = cpu `getRegister` rn
+        alu_out = rn' + shifter_operand
+        cpu' = cpu `setNFlag` (testBit alu_out 31)
+                   `setZFlag` (alu_out == 0)
+                   `setCFlag` (carryFrom rn' shifter_operand)
+                   `setVFlag` (overflowFromAdd rn' shifter_operand)
+cpu `executeRawInstruction` (ORR sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rd' = (cpu `getRegister` rn) .|. shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (shifter_carry_out)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (MOV sbit rd addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rd' = shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (shifter_carry_out)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (BIC sbit rd rn addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rd' = (cpu `getRegister` rn) .&. (complement shifter_operand)
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (shifter_carry_out)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
+cpu `executeRawInstruction` (MVN sbit rd addressMode) = cpu'
+  where (shifter_operand, shifter_carry_out) = evalAddressMode1 addressMode cpu
+        rd' = complement shifter_operand
+        cpsr'
+          | sbit && rd == 15 = getSPSR cpu
+          | sbit = getCPSR $ cpu `setNFlag` (testBit rd' 31)
+                                 `setZFlag` (rd' == 0)
+                                 `setCFlag` (shifter_carry_out)
+          | otherwise = getCPSR cpu
+        cpu' = setRegister cpu rd rd'
+               `setCPSR` cpsr'
         
 -- Data processing instructions.
 
