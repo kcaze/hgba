@@ -8,21 +8,34 @@ module CPU ( ProcessorMode(..)
            , r10, r11, r12, r13, r14, r15, sp, lr, pc
            , cpsr, spsr
            , nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag
+           , nBit, zBit, cBit, vBit, iBit, fBit, tBit
            , processorMode
            , instructionSize
+           , execute, fromBit, fromFlag
            ) where
 
 import Data.Bits
 import Data.Word
 import Bits
 
+
+-- Utility functions
+execute :: Execute -> CPU -> CPU
+fromBit :: Bit -> Flag
+fromFlag :: Flag -> Bit
+
+execute = get
+fromBit (Immutable g) = Immutable ((/= 0) . g)
+fromBit (Mutable g s) = Mutable ((/= 0) . g) (s . (\x -> if x then 1 else 0))
+fromFlag (Immutable g) = Immutable ((\x -> if x then 1 else 0) . g)
+fromFlag (Mutable g s) = Mutable ((\x -> if x then 1 else 0) . g) (s . (/= 0))
+
+-- Data types
 type Immediate a = Value CPU a 
 type Register = Value CPU Word32
 type Flag = Value CPU Bool
+type Bit = Value CPU Word32
 type Execute = Value CPU CPU
-
-execute :: Execute -> CPU -> CPU
-execute = get
 
 data ProcessorMode = User
                    | FIQ
@@ -208,6 +221,8 @@ setProcessorMode m c = c { cpu_cpsr = ((getCPSR c) .&. complement 0x1F) .|. b }
   where bs = [(getNFlag, setNFlag), (getZFlag, setZFlag), (getCFlag, setCFlag),
               (getVFlag, setVFlag), (getIFlag, setIFlag), (getFFlag, setFFlag),
               (getTFlag, setTFlag)]
+[nBit, zBit, cBit, vBit, iBit, fBit, tBit] = map fromFlag
+  [nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag]
 processorMode = Mutable getProcessorMode setProcessorMode
 
 -- Immutable CPU values (i.e. impure functions

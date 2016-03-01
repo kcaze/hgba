@@ -21,11 +21,24 @@ data Shifter = I_operand (Immediate Word32) (Immediate Int)
 data SFlag = SFlagOff | SFlagOn | SFlagOnR15
 
 data Instruction = Instruction Flag RawInstruction
-data RawInstruction = AND SFlag Register Register Shifter
+data RawInstruction = ADC SFlag Register Register Shifter
+                    | ADD SFlag Register Register Shifter
+                    | AND SFlag Register Register Shifter
                     | B Bool (Immediate Word32)
+                    | BIC SFlag Register Register Shifter
                     | BX Register
+                    | CMN Register Shifter
+                    | CMP Register Shifter
                     | EOR SFlag Register Register Shifter
+                    | ORR SFlag Register Register Shifter
+                    | MOV SFlag Register Shifter
+                    | MVN SFlag Register Shifter
+                    | RSB SFlag Register Register Shifter
+                    | RSC SFlag Register Register Shifter
+                    | SBC SFlag Register Register Shifter
                     | SUB SFlag Register Register Shifter
+                    | TEQ Register Shifter
+                    | TST Register Shifter
 instruction :: Instruction -> Execute
 instruction (Instruction c r) = _if c % raw r ! _id
 
@@ -61,18 +74,92 @@ raw (SUB s rd rn shift) = dataProcess s rd rn shift op n z c v
         z = (rd .== 0)
         c = _not $ _borrowFrom rn (shifterOperand shift)
         v = _overflowFromSub rn (shifterOperand shift)
+raw (RSB s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where op = flip (.-)
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = _not $ _borrowFrom (shifterOperand shift) rn
+        v = _overflowFromSub (shifterOperand shift) rn
+raw (ADD s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where op = (.+)
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = _carryFrom rn (shifterOperand shift)
+        v = _overflowFromAdd rn (shifterOperand shift)
+raw (ADC s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where op = \r operand -> (r .+ operand .+ cBit)
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = _carryFrom rn (shifterOperand shift .+ cBit)
+        v = _overflowFromAdd rn (shifterOperand shift .+ cBit)
+raw (SBC s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where cBit' = fromFlag $ _not cFlag
+        op = \r operand -> (r .- (operand .+ cBit'))
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = _borrowFrom rn (shifterOperand shift .+ cBit')
+        v = _overflowFromSub rn (shifterOperand shift .+ cBit')
+raw (RSC s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where cBit' = fromFlag $ _not cFlag
+        op = \r operand -> (operand .- (r .+ cBit'))
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = _borrowFrom (shifterOperand shift) (rn .+ cBit')
+        v = _overflowFromSub (shifterOperand shift) (rn .+ cBit')
+raw (TST rn shift) = set nFlag (aluOut .|?| 31)
+                 .>> set zFlag (aluOut .== 0)
+                 .>> set cFlag (shifterCarry shift)
+  where aluOut = rn .& (shifterOperand shift)
+raw (TEQ rn shift) = set nFlag (aluOut .|?| 31)
+                 .>> set zFlag (aluOut .== 0)
+                 .>> set cFlag (shifterCarry shift)
+  where aluOut = rn .^ (shifterOperand shift)
+raw (CMP rn shift) = set nFlag (aluOut .|?| 31)
+                 .>> set zFlag (aluOut .== 0)
+                 .>> set cFlag (_not $ _borrowFrom rn (shifterOperand shift))
+                 .>> set vFlag (_overflowFromSub rn (shifterOperand shift))
+  where aluOut = rn .- (shifterOperand shift)
+raw (CMN rn shift) = set nFlag (aluOut .|?| 31)
+                 .>> set zFlag (aluOut .== 0)
+                 .>> set cFlag (_not $ _carryFrom rn (shifterOperand shift))
+                 .>> set vFlag (_overflowFromAdd rn (shifterOperand shift))
+  where aluOut = rn .+ (shifterOperand shift)
+raw (ORR s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where op = (.|)
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = shifterCarry shift
+        v = vFlag
+raw (MOV s rd shift) = dataProcess s rd rd shift op n z c v
+  where op = const
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = shifterCarry shift
+        v = vFlag
+raw (BIC s rd rn shift) = dataProcess s rd rn shift op n z c v
+  where op = \r operand -> r .& (complement .$ operand)
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = shifterCarry shift
+        v = vFlag
+raw (MVN s rd shift) = dataProcess s rd rd shift op n z c v
+  where op = \r operand -> complement .$ const r operand
+        n = (rd .|?| 31)
+        z = (rd .== 0)
+        c = shifterCarry shift
+        v = vFlag
 
 -- Condition codes
 eq = zFlag
-ne = not .$ zFlag
+ne = _not zFlag
 cs = cFlag
 hs = cs
-cc = not .$ cFlag
+cc = _not cFlag
 lo = cc
 mi = nFlag
-pl = not .$ nFlag
+pl = _not nFlag
 vs = vFlag
-vc = not .$ vFlag
+vc = _not vFlag
 hi = cs .&& ne
 ls = cc .&& eq
 ge = mi .== vs

@@ -137,6 +137,7 @@ rotateLeft :: Word32 -> Int -> Word32
 rotateRight :: Word32 -> Int -> Word32
 bitRange :: Int -> Int -> Word32 -> Word32
 signExtend :: Int -> Int -> Word32 -> Word32
+carryFrom :: Word32 -> Word32 -> Bool
 borrowFrom :: Word32 -> Word32 -> Bool
 overflowFromAdd :: Word32 -> Word32 -> Bool
 overflowFromSub :: Word32 -> Word32 -> Bool
@@ -153,6 +154,9 @@ signExtend from to n = foldr (.|.) n' bs
   where n' = n `shift` (32 - from) `shift` (from - 32)
         b = n' .&. bit (from - 1)
         bs = map (shift b) $ [1 .. (to - from)]
+carryFrom x y = x' + y' >= 2^32
+  where x' = fromIntegral x :: Integer
+        y' = fromIntegral y :: Integer
 borrowFrom x y = y > x
 overflowFromAdd x y = (xsign == ysign) && (xsign /= zsign)
   where xsign = testBit x 31
@@ -172,6 +176,7 @@ _logicalShiftRight :: Applicative f => f Word32 -> f Int -> f Word32
 _arithmeticShiftRight :: Applicative f => f Word32 -> f Int -> f Word32
 _rotateLeft :: Applicative f => f Word32 -> f Int -> f Word32
 _rotateRight :: Applicative f => f Word32 -> f Int -> f Word32
+_carryFrom :: Applicative f => f Word32 -> f Word32 -> f Bool
 _borrowFrom :: Applicative f => f Word32 -> f Word32 -> f Bool
 _overflowFromAdd :: Applicative f => f Word32 -> f Word32 -> f Bool
 _overflowFromSub :: Applicative f => f Word32 -> f Word32 -> f Bool
@@ -184,6 +189,7 @@ _logicalShiftRight = liftA2 logicalShiftRight
 _arithmeticShiftRight = liftA2 arithmeticShiftRight
 _rotateLeft = liftA2 rotateLeft
 _rotateRight = liftA2 rotateRight
+_carryFrom = liftA2 carryFrom
 _borrowFrom = liftA2 borrowFrom
 _overflowFromAdd = liftA2 overflowFromAdd
 _overflowFromSub = liftA2 overflowFromSub
