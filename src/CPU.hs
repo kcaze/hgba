@@ -12,6 +12,7 @@ module CPU ( ProcessorMode(..)
            , processorMode
            , instructionSize
            , execute, fromBit, fromFlag
+           , reset, powerUp
            ) where
 
 import Data.Bits

@@ -1,9 +1,14 @@
 module Test where
 
+import Bits
 import CPU
+import Instruction
 
-x :: ProcessorMode
-x = User
+instructions :: [Instruction] -> Execute
+instructions [] = fromFunction id
+instructions (x:xs) = fromFunction (execute (instruction x)
+                                .>> execute (instructions xs))
 
-y :: CPU
-y = undefined
+program = [
+    (Instruction al (MOV SFlagOff r0 (I_operand (pure 0xFF) (pure 0x00))))
+  ]

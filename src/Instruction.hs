@@ -38,10 +38,13 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | RSB SFlag Register Register Shifter
                     | RSC SFlag Register Register Shifter
                     | SBC SFlag Register Register Shifter
+                    | SMLAL SFlag Register Register Register Register
                     | SMULL SFlag Register Register Register Register
                     | SUB SFlag Register Register Shifter
                     | TEQ Register Shifter
                     | TST Register Shifter
+                    | UMLAL SFlag Register Register Register Register
+                    | UMULL SFlag Register Register Register Register
 instruction :: Instruction -> Execute
 instruction (Instruction c r) = _if c % raw r ! _id
 
@@ -134,7 +137,7 @@ raw (ORR s rd rn shift) = dataProcess s rd rn shift op n z c v
         c = shifterCarry shift
         v = vFlag
 raw (MOV s rd shift) = dataProcess s rd rd shift op n z c v
-  where op = const
+  where op = \r operand -> operand
         n = (rd .|?| 31)
         z = (rd .== 0)
         c = shifterCarry shift
@@ -146,7 +149,7 @@ raw (BIC s rd rn shift) = dataProcess s rd rn shift op n z c v
         c = shifterCarry shift
         v = vFlag
 raw (MVN s rd shift) = dataProcess s rd rd shift op n z c v
-  where op = \r operand -> complement .$ const r operand
+  where op = \r operand -> complement .$ operand
         n = (rd .|?| 31)
         z = (rd .== 0)
         c = shifterCarry shift
@@ -162,18 +165,48 @@ raw (MLA s rd rm rs rn) = set rd ((rm .* rs) .+ rn)
                              SFlagOn -> (set nFlag (rd .|?| 31)
                                  .>>  set zFlag (rd .== 0))
                              _       -> _id)
-{--raw (SMULL s rdlo rdhi rm rs) =
-      set rdhi (bitRange 32 63 .$ prod)
-  .>> set rdlo (bitRange  0 31 .$ prod)
+raw (SMULL s rdlo rdhi rm rs) =
+      set rdhi (to32 .$ _bitRange 32 63 prod)
+  .>> set rdlo (to32 .$ _bitRange  0 31 prod)
   .>> (case s of
         SFlagOn -> (set nFlag (rdhi .|?| 31)
                .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
         _       -> _id)
   where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
-        prodHi = to32 .$ (`shiftR` 32) .$ prod
-        prodLo = to32 .$ (.&. 0xFFFFFFFF) .$ prod
-        to64 = fromInteger :: Word64
-        to32 = fromInteger :: Word32--}
+        to64 x = fromIntegral (fromIntegral x :: Int32) :: Int64
+        to32 x = fromIntegral x :: Word32
+raw (UMULL s rdlo rdhi rm rs) =
+      set rdhi (to32 .$ _bitRange 32 63 prod)
+  .>> set rdlo (to32 .$ _bitRange  0 31 prod)
+  .>> (case s of
+        SFlagOn -> (set nFlag (rdhi .|?| 31)
+               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
+        _       -> _id)
+  where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
+        to64 x = fromIntegral x :: Word64
+        to32 x = fromIntegral x :: Word32
+raw (SMLAL s rdlo rdhi rm rs) =
+      set rdhi ((to32 .$ _bitRange 32 63 prod) .+ rdhi .+ carry)
+  .>> set rdlo ((to32 .$ _bitRange  0 31 prod) .+ rdlo)
+  .>> (case s of
+        SFlagOn -> (set nFlag (rdhi .|?| 31)
+               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
+        _       -> _id)
+  where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
+        to64 x = fromIntegral (fromIntegral x :: Int32) :: Int64
+        to32 x = fromIntegral x :: Word32
+        carry = _if (_carryFrom (to32 .$ _bitRange 0 31 prod) rdlo) % 1 ! 0
+raw (UMLAL s rdlo rdhi rm rs) =
+      set rdhi ((to32 .$ _bitRange 32 63 prod) .+ rdhi .+ carry)
+  .>> set rdlo ((to32 .$ _bitRange  0 31 prod) .+ rdlo)
+  .>> (case s of
+        SFlagOn -> (set nFlag (rdhi .|?| 31)
+               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
+        _       -> _id)
+  where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
+        to64 x = fromIntegral x :: Word64
+        to32 x = fromIntegral x :: Word32
+        carry = _if (_carryFrom (to32 .$ _bitRange 0 31 prod) rdlo) % 1 ! 0
                     
 
 -- Condition codes
@@ -193,7 +226,8 @@ ge = mi .== vs
 lt = mi ./= vs
 gt = ne .&& ge
 le = eq .|| lt
-al = const True
+al :: Flag
+al = pure True
 
 -- Addressing Mode 1: Data-processing operands
 shifter :: Shifter -> Immediate (Word32, Bool)
