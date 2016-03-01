@@ -31,11 +31,14 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | CMP Register Shifter
                     | EOR SFlag Register Register Shifter
                     | ORR SFlag Register Register Shifter
+                    | MLA SFlag Register Register Register Register
                     | MOV SFlag Register Shifter
                     | MVN SFlag Register Shifter
+                    | MUL SFlag Register Register Register
                     | RSB SFlag Register Register Shifter
                     | RSC SFlag Register Register Shifter
                     | SBC SFlag Register Register Shifter
+                    | SMULL SFlag Register Register Register Register
                     | SUB SFlag Register Register Shifter
                     | TEQ Register Shifter
                     | TST Register Shifter
@@ -148,6 +151,30 @@ raw (MVN s rd shift) = dataProcess s rd rd shift op n z c v
         z = (rd .== 0)
         c = shifterCarry shift
         v = vFlag
+-- Multiply instructions 
+raw (MUL s rd rm rs) = set rd (rm .* rs)
+                   .>> (case s of
+                          SFlagOn -> (set nFlag (rd .|?| 31)
+                                 .>>  set zFlag (rd .== 0))
+                          _       -> _id)
+raw (MLA s rd rm rs rn) = set rd ((rm .* rs) .+ rn)
+                      .>> (case s of
+                             SFlagOn -> (set nFlag (rd .|?| 31)
+                                 .>>  set zFlag (rd .== 0))
+                             _       -> _id)
+{--raw (SMULL s rdlo rdhi rm rs) =
+      set rdhi (bitRange 32 63 .$ prod)
+  .>> set rdlo (bitRange  0 31 .$ prod)
+  .>> (case s of
+        SFlagOn -> (set nFlag (rdhi .|?| 31)
+               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
+        _       -> _id)
+  where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
+        prodHi = to32 .$ (`shiftR` 32) .$ prod
+        prodLo = to32 .$ (.&. 0xFFFFFFFF) .$ prod
+        to64 = fromInteger :: Word64
+        to32 = fromInteger :: Word32--}
+                    
 
 -- Condition codes
 eq = zFlag

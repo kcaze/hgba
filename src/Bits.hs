@@ -86,23 +86,23 @@ x .>> y = fromFunction $ (get y) . (get x)
 (.<=) = liftA2 (<=)
 (.>=) = liftA2 (>=)
 
-(.+) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.+) :: (Num a, Applicative f) => f a -> f a -> f a
 (.+) = liftA2 (+)
-(.-) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.-) :: (Num a, Applicative f) => f a -> f a -> f a
 (.-) = liftA2 (-)
-(.*) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.*) :: (Num a, Applicative f) => f a -> f a -> f a
 (.*) = liftA2 (*)
 
-(.|) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.|) :: (Bits a, Applicative f) => f a -> f a -> f a
 (.|) = liftA2 (.|.)
-(.&) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.&) :: (Bits a, Applicative f) => f a -> f a -> f a
 (.&) = liftA2 (.&.)
-(.^) :: Applicative f => f Word32 -> f Word32 -> f Word32
-(.^) = liftA2 xor
+(.^) :: (Bits a, Applicative f) => f a -> f a -> f a
+(.^) = _xor
 
-(|?|) :: Word32 -> Int -> Bool
+(|?|) :: (Bits a) => a -> Int -> Bool
 (|?|) = testBit
-(.|?|) :: Applicative f => f Word32 -> f Int -> f Bool
+(.|?|) :: (Bits a, Applicative f) => f a -> f Int -> f Bool
 (.|?|) = _testBit
 
 (<!) :: Word32 -> Int -> Word32
@@ -130,56 +130,82 @@ x .>> y = fromFunction $ (get y) . (get x)
 (.@>) :: Applicative f => f Word32 -> f Int -> f Word32
 (.@>) = _rotateRight
 
-logicalShiftLeft :: Word32 -> Int -> Word32
-logicalShiftRight :: Word32 -> Int -> Word32
-arithmeticShiftRight :: Word32 -> Int -> Word32
-rotateLeft :: Word32 -> Int -> Word32
-rotateRight :: Word32 -> Int -> Word32
-bitRange :: Int -> Int -> Word32 -> Word32
-signExtend :: Int -> Int -> Word32 -> Word32
-carryFrom :: Word32 -> Word32 -> Bool
-borrowFrom :: Word32 -> Word32 -> Bool
-overflowFromAdd :: Word32 -> Word32 -> Bool
-overflowFromSub :: Word32 -> Word32 -> Bool
+-- Note: Most implementations here are naive and could be
+--       more efficient for specific instances. Optimize
+--       later if necessary.
+class (Num a, FiniteBits a) => Bits' a where
+  bitLength :: a -> Int
+  bits :: Int -> Int -> a
+  bitRange :: Int -> Int -> a -> a
+  logicalShiftLeft :: a -> Int -> a
+  logicalShiftRight :: a -> Int -> a
+  arithmeticShiftRight :: a -> Int -> a
+  rotateLeft :: a -> Int -> a
+  rotateRight :: a -> Int -> a
 
-logicalShiftLeft w n = fromIntegral $ (fromIntegral w :: Word32) `shiftL` n
-logicalShiftRight w n = fromIntegral $ (fromIntegral w :: Word32) `shiftR` n
-arithmeticShiftRight w n = fromIntegral $ (fromIntegral w :: Int32) `shiftR` n
-rotateLeft = rotateL
-rotateRight = rotateR
-bitRange low high w
-  | low > high = 0
-  | otherwise = w <! (31 - high) !> (31 - (high - low))
-signExtend from to n = foldr (.|.) n' bs
-  where n' = n `shift` (32 - from) `shift` (from - 32)
-        b = n' .&. bit (from - 1)
-        bs = map (shift b) $ [1 .. (to - from)]
-carryFrom x y = x' + y' >= 2^32
-  where x' = fromIntegral x :: Integer
-        y' = fromIntegral y :: Integer
-borrowFrom x y = y > x
-overflowFromAdd x y = (xsign == ysign) && (xsign /= zsign)
-  where xsign = testBit x 31
-        ysign = testBit y 31
-        zsign = testBit (x + y) 31
-overflowFromSub x y = (xsign /= ysign) && (xsign /= zsign)
-  where xsign = testBit x 31
-        ysign = testBit y 31
-        zsign = testBit (x - y) 31
+  {--signExtend :: Int -> Int -> a -> a
+  carryFrom :: a -> a -> Bool
+  borrowFrom :: a -> a -> Bool
+  overflowFromAdd :: a -> a -> Bool
+  overflowFromSub :: a -> a -> Bool--}
 
+  bitLength = finiteBitSize 
+  bits l h
+    | l > h = 0
+    | otherwise = bit l .|. bits (l+1) h
+  bitRange l h w = w .&. bits l h
+  logicalShiftLeft = shiftL
+  logicalShiftRight w n = shiftR w n .&. bits 0 (bitLength w - 1 - n)
+  arithmeticShiftRight w n = shiftR w n .&. bits 0 (bitLength w - 1 - n)
+                             .|. (if testBit w (bitLength w - 1)
+                                  then bits (bitLength w - n) (bitLength w - 1)
+                                  else 0)
+  rotateLeft = rotateL
+  rotateRight = rotateR
 
-_xor :: Applicative f => f Word32 -> f Word32 -> f Word32
+instance Bits' Word32
+instance Bits' Word64
+
+{--
+instance Bits' Word32 where
+  logicalShiftLeft w n = fromIntegral $ (fromIntegral w :: Word32) `shiftL` n
+  logicalShiftRight w n = fromIntegral $ (fromIntegral w :: Word32) `shiftR` n
+  arithmeticShiftRight w n = fromIntegral $ (fromIntegral w :: Int32) `shiftR` n
+  rotateLeft = rotateL
+  rotateRight = rotateR
+  bitRange low high w
+    | low > high = 0
+    | otherwise = w <! (31 - high) !> (31 - (high - low))
+  signExtend from to n = foldr (.|.) n' bs
+    where n' = n `shift` (32 - from) `shift` (from - 32)
+          b = n' .&. bit (from - 1)
+          bs = map (shift b) $ [1 .. (to - from)]
+  carryFrom x y = x' + y' >= 2^32
+    where x' = fromIntegral x :: Integer
+          y' = fromIntegral y :: Integer
+  borrowFrom x y = y > x
+  overflowFromAdd x y = (xsign == ysign) && (xsign /= zsign)
+    where xsign = testBit x 31
+          ysign = testBit y 31
+          zsign = testBit (x + y) 31
+  overflowFromSub x y = (xsign /= ysign) && (xsign /= zsign)
+    where xsign = testBit x 31
+          ysign = testBit y 31
+          zsign = testBit (x - y) 31
+--}
+
+_xor :: (Bits a, Applicative f) => f a -> f a -> f a
 _not :: Applicative f => f Bool -> f Bool
-_testBit :: Applicative f => f Word32 -> f Int -> f Bool
+_testBit :: (Bits a, Applicative f) => f a -> f Int -> f Bool
 _logicalShiftLeft :: Applicative f => f Word32 -> f Int -> f Word32
 _logicalShiftRight :: Applicative f => f Word32 -> f Int -> f Word32
 _arithmeticShiftRight :: Applicative f => f Word32 -> f Int -> f Word32
 _rotateLeft :: Applicative f => f Word32 -> f Int -> f Word32
 _rotateRight :: Applicative f => f Word32 -> f Int -> f Word32
-_carryFrom :: Applicative f => f Word32 -> f Word32 -> f Bool
+{--_carryFrom :: Applicative f => f Word32 -> f Word32 -> f Bool
 _borrowFrom :: Applicative f => f Word32 -> f Word32 -> f Bool
 _overflowFromAdd :: Applicative f => f Word32 -> f Word32 -> f Bool
-_overflowFromSub :: Applicative f => f Word32 -> f Word32 -> f Bool
+_overflowFromSub :: Applicative f => f Word32 -> f Word32 -> f Bool--}
 
 _xor = liftA2 xor
 _not = fmap not
@@ -189,7 +215,7 @@ _logicalShiftRight = liftA2 logicalShiftRight
 _arithmeticShiftRight = liftA2 arithmeticShiftRight
 _rotateLeft = liftA2 rotateLeft
 _rotateRight = liftA2 rotateRight
-_carryFrom = liftA2 carryFrom
+{--_carryFrom = liftA2 carryFrom
 _borrowFrom = liftA2 borrowFrom
 _overflowFromAdd = liftA2 overflowFromAdd
-_overflowFromSub = liftA2 overflowFromSub
+_overflowFromSub = liftA2 overflowFromSub--}
