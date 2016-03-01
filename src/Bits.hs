@@ -5,24 +5,65 @@ import Data.Bits
 import Data.Int
 import Data.Word
 
-instance Num a => Num (s -> a) where
+class Gettable t where
+  get :: (t s a) -> (s -> a)
+  fromFunction :: (s -> a) -> (t s a)
+
+data Value s a = Immutable (s -> a)
+               | Mutable (s -> a) (a -> s -> s)
+
+set :: Value s a -> (Value s a -> Value s s)
+set (Mutable _ s) = \value -> fromFunction (\state -> s (get value state) state)
+set _ = error "Attempting to set immutable value."
+
+instance Gettable (->) where
+  get = id
+  fromFunction = id
+
+instance Gettable (Value) where
+  get (Immutable g) = g
+  get (Mutable g _) = g
+  fromFunction = Immutable
+
+instance Functor (Value s) where
+  fmap f x = Immutable $ fmap f (get x)
+
+instance Applicative (Value s) where
+  pure x = Immutable (const x)
+  x <*> y = Immutable (get x <*> get y)
+
+instance (Num a) => Num (s -> a) where
   (+) = liftA2 (+)
   (*) = liftA2 (*)
   abs = fmap abs
   signum = fmap signum
   negate = fmap negate
-  fromInteger = const . fromInteger
+  fromInteger n = fromFunction (const . fromInteger $ n)
 
-_if :: (s -> Bool) -> (s -> a) -> (s -> a) -> (s -> a)
-_if cond a b = \s -> if cond s then a s else b s
+instance (Num a) => Num (Value s a) where
+  (+) = liftA2 (+)
+  (*) = liftA2 (*)
+  abs = fmap abs
+  signum = fmap signum
+  negate = fmap negate
+  fromInteger n = fromFunction (const . fromInteger $ n)
+
+_if :: Gettable g => g s Bool -> g s a -> g s a -> g s a
+_if cond a b = fromFunction $ \s -> if get cond s then get a s else get b s
+
+_id :: Gettable g => g a a
+_id = fromFunction id
+
+_pair :: Applicative f => f a -> f b -> f (a, b)
+_pair = liftA2 (,)
 
 (%) = ($) -- "then" operator
 (!) = ($) -- "else" operator
 infixl 1 %
 infixr 0 !
 
-pair :: Applicative f => f a -> f b -> f (a, b)
-pair = liftA2 (,)
+(.>>) :: Gettable g => g a b -> g b c -> g a c
+x .>> y = fromFunction $ (get y) . (get x)
 
 (.$) :: Functor f => (a -> b) -> f a -> f b
 (.$) = (<$>)
@@ -45,10 +86,19 @@ pair = liftA2 (,)
 (.<=) = liftA2 (<=)
 (.>=) = liftA2 (>=)
 
+(.+) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.+) = liftA2 (+)
+(.-) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.-) = liftA2 (-)
+(.*) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.*) = liftA2 (*)
+
 (.|) :: Applicative f => f Word32 -> f Word32 -> f Word32
 (.|) = liftA2 (.|.)
 (.&) :: Applicative f => f Word32 -> f Word32 -> f Word32
 (.&) = liftA2 (.&.)
+(.^) :: Applicative f => f Word32 -> f Word32 -> f Word32
+(.^) = liftA2 xor
 
 (|?|) :: Word32 -> Int -> Bool
 (|?|) = testBit
@@ -86,6 +136,10 @@ arithmeticShiftRight :: Word32 -> Int -> Word32
 rotateLeft :: Word32 -> Int -> Word32
 rotateRight :: Word32 -> Int -> Word32
 bitRange :: Int -> Int -> Word32 -> Word32
+signExtend :: Int -> Int -> Word32 -> Word32
+borrowFrom :: Word32 -> Word32 -> Bool
+overflowFromAdd :: Word32 -> Word32 -> Bool
+overflowFromSub :: Word32 -> Word32 -> Bool
 
 logicalShiftLeft w n = fromIntegral $ (fromIntegral w :: Word32) `shiftL` n
 logicalShiftRight w n = fromIntegral $ (fromIntegral w :: Word32) `shiftR` n
@@ -95,20 +149,41 @@ rotateRight = rotateR
 bitRange low high w
   | low > high = 0
   | otherwise = w <! (31 - high) !> (31 - (high - low))
+signExtend from to n = foldr (.|.) n' bs
+  where n' = n `shift` (32 - from) `shift` (from - 32)
+        b = n' .&. bit (from - 1)
+        bs = map (shift b) $ [1 .. (to - from)]
+borrowFrom x y = y > x
+overflowFromAdd x y = (xsign == ysign) && (xsign /= zsign)
+  where xsign = testBit x 31
+        ysign = testBit y 31
+        zsign = testBit (x + y) 31
+overflowFromSub x y = (xsign /= ysign) && (xsign /= zsign)
+  where xsign = testBit x 31
+        ysign = testBit y 31
+        zsign = testBit (x - y) 31
 
 
 _xor :: Applicative f => f Word32 -> f Word32 -> f Word32
+_not :: Applicative f => f Bool -> f Bool
 _testBit :: Applicative f => f Word32 -> f Int -> f Bool
 _logicalShiftLeft :: Applicative f => f Word32 -> f Int -> f Word32
 _logicalShiftRight :: Applicative f => f Word32 -> f Int -> f Word32
 _arithmeticShiftRight :: Applicative f => f Word32 -> f Int -> f Word32
 _rotateLeft :: Applicative f => f Word32 -> f Int -> f Word32
 _rotateRight :: Applicative f => f Word32 -> f Int -> f Word32
+_borrowFrom :: Applicative f => f Word32 -> f Word32 -> f Bool
+_overflowFromAdd :: Applicative f => f Word32 -> f Word32 -> f Bool
+_overflowFromSub :: Applicative f => f Word32 -> f Word32 -> f Bool
 
 _xor = liftA2 xor
+_not = fmap not
 _testBit = liftA2 testBit
 _logicalShiftLeft = liftA2 logicalShiftLeft
 _logicalShiftRight = liftA2 logicalShiftRight
 _arithmeticShiftRight = liftA2 arithmeticShiftRight
 _rotateLeft = liftA2 rotateLeft
 _rotateRight = liftA2 rotateRight
+_borrowFrom = liftA2 borrowFrom
+_overflowFromAdd = liftA2 overflowFromAdd
+_overflowFromSub = liftA2 overflowFromSub
