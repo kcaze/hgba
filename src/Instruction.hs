@@ -1,3 +1,4 @@
+{-# LANGUAGE BinaryLiterals #-}
 module Instruction where
 
 import Control.Applicative
@@ -19,6 +20,39 @@ data Shifter = I_operand (Immediate Word32) (Immediate Int)
              | R_ROR_R_operand Register Register
              | R_RRX_operand Register
 data SFlag = SFlagOff | SFlagOn | SFlagOnR15
+
+data AddressingModeType = NoIndex | PreIndex | PostIndex
+data AddressingMode = AddrMode1 AddressingModeType Bool Register Word32
+                    | AddrMode2 AddressingModeType Bool Register Register
+                    | AddrMode3 AddressingModeType Bool Register Register Int Int
+-- Evaluating an address mode results in an address and an execute.
+-- The execute is necessary for base register write-back.
+addressMode :: AddressingMode -> (Immediate Word32, Execute)
+addressMode (AddrMode1 addrType uflag rn offset) = 
+  addressMode' addrType rn address
+  where address = if uflag then rn .+ pure offset else rn .- pure offset
+addressMode (AddrMode2 addrType uflag rn rm) =
+  addressMode' addrType rn address
+  where address = if uflag then rn .+ rm else rn .- rm
+addressMode (AddrMode3 addrType uflag rn rm immediate shift) =
+  addressMode' addrType rn address
+  where index = case shift of
+                  0b00 -> (rm .<! pure immediate)
+                  0b01 -> if (immediate == 0) then 0 else (rm .!> pure immediate)
+                  0b10 -> if (immediate == 0) then (
+                            _if (rm .|?| 31) % 0xFFFFFFFF ! 0
+                          ) else (rm .?> pure immediate)
+                  0b11 -> if (immediate == 0) then (
+                            (cBit .<! 31) .| (rm .!> 1)
+                          ) else (rm .@> pure immediate)
+        address = if uflag then rn .+ index else rn .- index
+
+addressMode' :: AddressingModeType ->
+                Register -> Immediate Word32 ->
+                (Immediate Word32, Execute)
+addressMode' NoIndex _ address = (address, _id)
+addressMode' PreIndex rn address = (address, set rn address)
+addressMode' PostIndex rn address = (rn, set rn address)
 
 data Instruction = Instruction Flag RawInstruction
 data RawInstruction = ADC SFlag Register Register Shifter
@@ -321,6 +355,7 @@ shifter (R_ROR_R_operand rm rs) = do {
 shifter (R_RRX_operand rm) = do {
   _pair ((c .<! 31) .| (rm .!> 1)) (rm .|?| 0)
 } where c = _if (cFlag) % 1 ! 0
+
 
 dataProcess :: SFlag -> Register -> Register -> Shifter
             -> (Register -> Immediate Word32 -> Immediate Word32)
