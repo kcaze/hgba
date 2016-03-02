@@ -33,8 +33,10 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | ORR SFlag Register Register Shifter
                     | MLA SFlag Register Register Register Register
                     | MOV SFlag Register Shifter
-                    | MVN SFlag Register Shifter
+                    | MRS Bool Register
+                    | MSR Bool (Immediate Word32) Shifter
                     | MUL SFlag Register Register Register
+                    | MVN SFlag Register Shifter
                     | RSB SFlag Register Register Shifter
                     | RSC SFlag Register Register Shifter
                     | SBC SFlag Register Register Shifter
@@ -207,6 +209,28 @@ raw (UMLAL s rdlo rdhi rm rs) =
         to64 x = fromIntegral x :: Word64
         to32 x = fromIntegral x :: Word32
         carry = _if (_carryFrom (to32 .$ _bitRange 0 31 prod) rdlo) % 1 ! 0
+-- Status register access instructions
+raw (MRS rbit rd) = set rd psr
+  where psr = if rbit then spsr else cpsr
+raw (MSR rbit fieldMask shift) = 
+  if not rbit then (
+    let mask = _if (processorMode ./= pure User)
+               %   (byteMask .& (userMask .| privMask))
+               !   (byteMask .& userMask)
+    in set cpsr ((cpsr .& (complement .$ mask)) .| (operand .& mask))
+  ) else (
+    let mask = byteMask .& (userMask .| privMask .| stateMask)
+    in set spsr ((spsr .& (complement .$ mask)) .| (operand .& mask))
+  )
+  where operand = shifterOperand shift
+        unallocMask = 0x0FFFFF00
+        userMask = 0xF0000000
+        privMask = 0x0000000F
+        stateMask = 0x00000020
+        byteMask = (_if (_testBit fieldMask 0) % 0x000000FF ! 0) .|
+                   (_if (_testBit fieldMask 1) % 0x0000FF00 ! 0) .|
+                   (_if (_testBit fieldMask 2) % 0x00FF0000 ! 0) .|
+                   (_if (_testBit fieldMask 3) % 0xFF000000 ! 0)
                     
 
 -- Condition codes
