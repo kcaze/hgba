@@ -35,7 +35,7 @@ class MemoryRegion m where
 
   -- Default little endian implementations
   read16 a m = read8 a m .|. (read8 (a + 1) m `shiftL` 8)
-  read32 a m = read16 a m .|. (read8 (a + 2) m `shiftL` 16)
+  read32 a m = read16 a m .|. (read16 (a + 2) m `shiftL` 16)
   write16 a w = (write8 (a+1) w2) . (write8 a w1)
     where w1 = w .&. 0x00FF
           w2 = (w .&. 0xFF00) `shiftR` 8
@@ -82,7 +82,7 @@ instance MemoryRegion OAM where
   write8 a b (OAM m) = OAM $ Map.insert (a .&. 0x3FF) b m
 
 instance MemoryRegion Memory where
-  read8 a m = case (a .&. 0xFF000000) of
+  read8 a m = case (a `shiftR` 0x18) of
             0x00 -> read8 a (systemROM m)
             0x01 -> read8 a (systemROM m)
             0x02 -> read8 a (ewram m)
@@ -92,7 +92,7 @@ instance MemoryRegion Memory where
             0x06 -> read8 a (vram m)
             0x07 -> read8 a (oam m)
             _    -> 0
-  write8 a b m = case (a .&. 0xFF000000) of
+  write8 a b m = case (a `shiftR` 0x18) of
             0x00 -> m { systemROM = write8 a b (systemROM m) }
             0x01 -> m { systemROM = write8 a b (systemROM m) }
             0x02 -> m { ewram = write8 a b (ewram m) }

@@ -64,18 +64,30 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | CMN Register Shifter
                     | CMP Register Shifter
                     | EOR SFlag Register Register Shifter
-                    | ORR SFlag Register Register Shifter
+                    | LDR Register AddressingMode
+                    | LDRB Register AddressingMode
+                    | LDRBT Register AddressingMode
+                    | LDRH Register AddressingMode
+                    | LDRT Register AddressingMode
+                    | LDRSB Register AddressingMode
+                    | LDRSH Register AddressingMode
                     | MLA SFlag Register Register Register Register
                     | MOV SFlag Register Shifter
                     | MRS Bool Register
                     | MSR Bool (Immediate Word32) Shifter
                     | MUL SFlag Register Register Register
                     | MVN SFlag Register Shifter
+                    | ORR SFlag Register Register Shifter
                     | RSB SFlag Register Register Shifter
                     | RSC SFlag Register Register Shifter
                     | SBC SFlag Register Register Shifter
                     | SMLAL SFlag Register Register Register Register
                     | SMULL SFlag Register Register Register Register
+                    | STR Register AddressingMode
+                    | STRB Register AddressingMode
+                    | STRBT Register AddressingMode
+                    | STRH Register AddressingMode
+                    | STRT Register AddressingMode
                     | SUB SFlag Register Register Shifter
                     | TEQ Register Shifter
                     | TST Register Shifter
@@ -265,6 +277,44 @@ raw (MSR rbit fieldMask shift) =
                    (_if (_testBit fieldMask 1) % 0x0000FF00 ! 0) .|
                    (_if (_testBit fieldMask 2) % 0x00FF0000 ! 0) .|
                    (_if (_testBit fieldMask 3) % 0xFF000000 ! 0)
+-- Load and store instructions
+raw (LDR rd am) = writeBack
+              .>> set rd (memory32 address)
+  where (address, writeBack) = addressMode am
+raw (LDRT rd am) = writeBack
+               .>> set rd (memory32 address)
+  where (address, writeBack) = addressMode am
+raw (LDRB rd am) = writeBack
+               .>> set rd (memory8 address)
+  where (address, writeBack) = addressMode am
+raw (LDRSB rd am) = writeBack
+                .>> set rd (signExtend 8 32 .$ memory8 address)
+  where (address, writeBack) = addressMode am
+raw (LDRBT rd am) = writeBack
+                .>> set rd (memory8 address)
+  where (address, writeBack) = addressMode am
+raw (LDRH rd am) = writeBack
+               .>> set rd (memory16 address)
+  where (address, writeBack) = addressMode am
+raw (LDRSH rd am) = writeBack
+                .>> set rd (signExtend 16 32 .$ memory16 address)
+  where (address, writeBack) = addressMode am
+raw (STR rd am) = writeBack
+              .>> set (memory32 address) rd
+  where (address, writeBack) = addressMode am
+raw (STRT rd am) = writeBack
+              .>> set (memory32 address) rd
+  where (address, writeBack) = addressMode am
+raw (STRB rd am) = writeBack
+              .>> set (memory8 address) (bitRange 0 7 .$ rd)
+  where (address, writeBack) = addressMode am
+raw (STRBT rd am) = writeBack
+              .>> set (memory8 address) (bitRange 0 7 .$ rd)
+  where (address, writeBack) = addressMode am
+raw (STRH rd am) = writeBack
+              .>> set (memory16 address) (bitRange 0 15 .$ rd)
+  where (address, writeBack) = addressMode am
+  
                     
 
 -- Condition codes
@@ -315,7 +365,7 @@ shifter (R_LSL_R_operand rm rs) = do {
 } where rs' = fromIntegral .$ (bitRange 0 7) .$ rs
 
 shifter (R_LSR_I_operand rm shift_imm) = do {
-  _if (shift_imm .== 0) % _pair rm (rm .|?| 31)
+  _if (shift_imm .== 0) % _pair 0 (rm .|?| 31)
   !                       _pair (rm .!> shift_imm) (rm .|?| (shift_imm - 1))
 }
 

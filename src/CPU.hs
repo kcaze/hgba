@@ -10,6 +10,7 @@ module CPU ( ProcessorMode(..)
            , nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag
            , nBit, zBit, cBit, vBit, iBit, fBit, tBit
            , processorMode
+           , memory8, memory16, memory32
            , instructionSize
            , execute, fromBit, fromFlag
            , reset, powerUp
@@ -241,9 +242,15 @@ setMemory32 a w cpu = cpu { cpu_memory = write32 a w (cpu_memory cpu) }
 [nBit, zBit, cBit, vBit, iBit, fBit, tBit] = map fromFlag
   [nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag]
 processorMode = Mutable getProcessorMode setProcessorMode
-memory8 address = Mutable (getMemory8 address) (setMemory8 address) 
-memory16 address = Mutable (getMemory16 address) (setMemory16 address) 
-memory32 address = Mutable (getMemory32 address) (setMemory32 address) 
+memory8 :: Value CPU Address -> Value CPU Word32
+memory16 :: Value CPU Address -> Value CPU Word32
+memory32 :: Value CPU Address -> Value CPU Word32
+memory8 address = Mutable (\c -> getMemory8 (get address c) c)
+                          (\w c -> setMemory8 (get address c) w c) 
+memory16 address = Mutable (\c -> getMemory16 (get address c) c)
+                          (\w c -> setMemory16 (get address c) w c) 
+memory32 address = Mutable (\c -> getMemory32 (get address c) c)
+                          (\w c -> setMemory32 (get address c) w c) 
 
 -- Immutable CPU values (i.e. impure functions
 instructionSize :: Immediate Word32
