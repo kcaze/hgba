@@ -16,9 +16,10 @@ module CPU ( ProcessorMode(..)
            ) where
 
 import Data.Bits
+import qualified Data.Map as Map
 import Data.Word
 import Bits
-
+import Memory
 
 -- Utility functions
 execute :: Execute -> CPU -> CPU
@@ -84,7 +85,8 @@ data CPU = CPU {
   cpu_spsr_fiq  :: Word32,
   cpu_spsr_irq  :: Word32,
   cpu_spsr_svc  :: Word32,
-  cpu_spsr_und  :: Word32
+  cpu_spsr_und  :: Word32,
+  cpu_memory    :: Memory
 } deriving (Eq, Show)
 
 -- Pure CPU Getters
@@ -143,6 +145,13 @@ getProcessorMode = _if (mode .== 0b01000) % pure User
                  ! _if (mode .== 0b11111) % pure System
                  ! error "CPU has invalid processor mode."
   where mode = getCPSR .& 0x1F
+
+getMemory8 :: Address -> CPU -> Word32
+getMemory16 :: Address -> CPU -> Word32
+getMemory32 :: Address -> CPU -> Word32
+getMemory8 a cpu = read8 a (cpu_memory cpu) 
+getMemory16 a cpu = read16 a (cpu_memory cpu) 
+getMemory32 a cpu = read32 a (cpu_memory cpu) 
 
 -- Pure CPU Setters
 setR0 x c = c { cpu_r0 = x }
@@ -209,6 +218,13 @@ setProcessorMode m c = c { cpu_cpsr = ((getCPSR c) .&. complement 0x1F) .|. b }
                       Undefined  -> 0b11011
                       System     -> 0b11111
 
+setMemory8 :: Address -> Word32 -> CPU -> CPU
+setMemory16 :: Address -> Word32 -> CPU -> CPU
+setMemory32 :: Address -> Word32 -> CPU -> CPU
+setMemory8 a w cpu = cpu { cpu_memory = write8 a w (cpu_memory cpu) }
+setMemory16 a w cpu = cpu { cpu_memory = write16 a w (cpu_memory cpu) }
+setMemory32 a w cpu = cpu { cpu_memory = write32 a w (cpu_memory cpu) }
+
 -- Mutable CPU values
 [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15,
  sp, lr, pc, cpsr, spsr] = map (uncurry Mutable) rs :: [Register]
@@ -225,6 +241,9 @@ setProcessorMode m c = c { cpu_cpsr = ((getCPSR c) .&. complement 0x1F) .|. b }
 [nBit, zBit, cBit, vBit, iBit, fBit, tBit] = map fromFlag
   [nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag]
 processorMode = Mutable getProcessorMode setProcessorMode
+memory8 address = Mutable (getMemory8 address) (setMemory8 address) 
+memory16 address = Mutable (getMemory16 address) (setMemory16 address) 
+memory32 address = Mutable (getMemory32 address) (setMemory32 address) 
 
 -- Immutable CPU values (i.e. impure functions
 instructionSize :: Immediate Word32
@@ -278,5 +297,14 @@ powerUp = execute reset CPU {
   cpu_spsr_fiq  = 0,
   cpu_spsr_irq  = 0,
   cpu_spsr_svc  = 0,
-  cpu_spsr_und  = 0
+  cpu_spsr_und  = 0,
+  cpu_memory = Memory {
+    systemROM = SystemROM Map.empty,
+    ewram = EWRAM Map.empty,
+    iwram = IWRAM Map.empty,
+    ioram = IORAM Map.empty,
+    paletteRAM = PaletteRAM Map.empty,
+    vram = VRAM Map.empty,
+    oam = OAM Map.empty
+  }
 }
