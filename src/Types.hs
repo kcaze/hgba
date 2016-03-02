@@ -39,57 +39,57 @@ data ConditionCode = EQ |
                      AL
   deriving (Eq, Show)
 
-data RawInstruction =   ADC Bool Register Register AddressMode1
-                      | ADD Bool Register Register AddressMode1
-                      | AND Bool Register Register AddressMode1
-                      | B Bool Word32
-                      | BIC Bool Register Register AddressMode1
-                      | BX Register
-                      | CDP
-                      | CMN Register AddressMode1
-                      | CMP Register AddressMode1
-                      | EOR Bool Register Register AddressMode1
-                      | LDC
-                      | LDM1
-                      | LDM2
-                      | LDM3
-                      | LDR
-                      | LDRB
-                      | LDRBT
-                      | LDRH
-                      | LDRSB
-                      | LDRSH
-                      | LDRT
-                      | MCR
-                      | MLA Bool Register Register Register Register
-                      | MOV Bool Register AddressMode1
-                      | MRC
-                      | MRS Bool Register
-                      | MSR Bool Word32 AddressMode1
-                      | MUL Bool Register Register Register
-                      | MVN Bool Register AddressMode1
-                      | ORR Bool Register Register AddressMode1
-                      | RSB Bool Register Register AddressMode1
-                      | RSC Bool Register Register AddressMode1
-                      | SBC Bool Register Register AddressMode1
-                      | SMLAL Bool Register Register Register Register
-                      | SMULL Bool Register Register Register Register
-                      | STC
+data RawInstruction = --  ADC Bool Register Register AddressMode1
+                      -- | ADD Bool Register Register AddressMode1
+                      -- | AND Bool Register Register AddressMode1
+                      -- | B Bool Word32
+                      -- | BIC Bool Register Register AddressMode1
+                      -- | BX Register
+                      -- | CDP
+                      -- | CMN Register AddressMode1
+                      -- | CMP Register AddressMode1
+                      -- | EOR Bool Register Register AddressMode1
+                      -- | LDC
+                      -- | LDM1
+                      -- | LDM2
+                      -- | LDM3
+                      -- | LDR
+                      -- | LDRB
+                      -- | LDRBT
+                      -- | LDRH
+                      -- | LDRSB
+                      -- | LDRSH
+                      -- | LDRT
+                      -- | MCR
+                      -- | MLA Bool Register Register Register Register
+                      -- | MOV Bool Register AddressMode1
+                      -- | MRC
+                      -- | MRS Bool Register
+                      -- | MSR Bool Word32 AddressMode1
+                      -- | MUL Bool Register Register Register
+                      -- | MVN Bool Register AddressMode1
+                      -- | ORR Bool Register Register AddressMode1
+                      -- | RSB Bool Register Register AddressMode1
+                      -- | RSC Bool Register Register AddressMode1
+                      -- | SBC Bool Register Register AddressMode1
+                      -- | SMLAL Bool Register Register Register Register
+                      -- | SMULL Bool Register Register Register Register
+                      -- | STC
                       | STM1
                       | STM2
-                      | STR
-                      | STRB
-                      | STRBT
-                      | STRH
-                      | STRT
-                      | SUB Bool Register Register AddressMode1
+                      -- | STR
+                      -- | STRB
+                      -- | STRBT
+                      -- | STRH
+                      -- | STRT
+                      -- | SUB Bool Register Register AddressMode1
                       | SWI
                       | SWP
                       | SWPB
-                      | TEQ Register AddressMode1
-                      | TST Register AddressMode1
-                      | UMLAL Bool Register Register Register Register
-                      | UMULL Bool Register Register Register Register
+                      -- | TEQ Register AddressMode1
+                      -- | TST Register AddressMode1
+                      -- | UMLAL Bool Register Register Register Register
+                      -- | UMULL Bool Register Register Register Register
   deriving (Eq, Show)
 
 data AddressMode1 =   AddressMode1_1 Word32 Word32 -- #<rotate_imm> #<immed_8>

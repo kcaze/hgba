@@ -25,6 +25,10 @@ data AddressingModeType = NoIndex | PreIndex | PostIndex
 data AddressingMode = AddrMode1 AddressingModeType Bool Register Word32
                     | AddrMode2 AddressingModeType Bool Register Register
                     | AddrMode3 AddressingModeType Bool Register Register Int Int
+data AddressingMode4 = IA Bool Register
+                     | IB Bool Register
+                     | DA Bool Register
+                     | DB Bool Register
 -- Evaluating an address mode results in an address and an execute.
 -- The execute is necessary for base register write-back.
 addressMode :: AddressingMode -> (Immediate Word32, Execute)
@@ -54,6 +58,26 @@ addressMode' NoIndex _ address = (address, _id)
 addressMode' PreIndex rn address = (address, set rn address)
 addressMode' PostIndex rn address = (rn, set rn address)
 
+-- Evaluating an address mode results in a start address and an execute.
+-- The execute is necessary for base register write-back.
+addressMode4 :: AddressingMode4 -> [Register] -> (Immediate Word32, Execute)
+addressMode4 (IA wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn 
+        writeBack = if wflag then set rn (rn .+ (bitsSet .* 4)) else _id
+addressMode4 (IB wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn .+ 4
+        writeBack = if wflag then set rn (rn .+ (bitsSet .* 4)) else _id
+addressMode4 (DA wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn .- (bitsSet .* 4) .+ 4
+        writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
+addressMode4 (DB wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn .- (bitsSet .* 4)
+        writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
+
 data Instruction = Instruction Flag RawInstruction
 data RawInstruction = ADC SFlag Register Register Shifter
                     | ADD SFlag Register Register Shifter
@@ -64,6 +88,9 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | CMN Register Shifter
                     | CMP Register Shifter
                     | EOR SFlag Register Register Shifter
+                    | LDM1 Register AddressingMode4 [Register]
+                    | LDM2 Register AddressingMode4 [Register]
+                    | LDM3 Register AddressingMode4 [Register]
                     | LDR Register AddressingMode
                     | LDRB Register AddressingMode
                     | LDRBT Register AddressingMode
@@ -83,6 +110,8 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | SBC SFlag Register Register Shifter
                     | SMLAL SFlag Register Register Register Register
                     | SMULL SFlag Register Register Register Register
+                    | STM1 Register AddressingMode4 [Register]
+                    | STM2 Register AddressingMode4 [Register]
                     | STR Register AddressingMode
                     | STRB Register AddressingMode
                     | STRBT Register AddressingMode
@@ -278,42 +307,73 @@ raw (MSR rbit fieldMask shift) =
                    (_if (_testBit fieldMask 2) % 0x00FF0000 ! 0) .|
                    (_if (_testBit fieldMask 3) % 0xFF000000 ! 0)
 -- Load and store instructions
-raw (LDR rd am) = writeBack
-              .>> set rd (memory32 address)
+raw (LDR rd am) = set rd (memory32 address)
+              .>> writeBack
   where (address, writeBack) = addressMode am
-raw (LDRT rd am) = writeBack
-               .>> set rd (memory32 address)
+raw (LDRT rd am) = set rd (memory32 address)
+               .>> writeBack
   where (address, writeBack) = addressMode am
-raw (LDRB rd am) = writeBack
-               .>> set rd (memory8 address)
+raw (LDRB rd am) = set rd (memory8 address)
+               .>> writeBack
   where (address, writeBack) = addressMode am
-raw (LDRSB rd am) = writeBack
-                .>> set rd (signExtend 8 32 .$ memory8 address)
+raw (LDRSB rd am) = set rd (signExtend 8 32 .$ memory8 address)
+                .>> writeBack
   where (address, writeBack) = addressMode am
-raw (LDRBT rd am) = writeBack
-                .>> set rd (memory8 address)
+raw (LDRBT rd am) = set rd (memory8 address)
+                .>> writeBack
   where (address, writeBack) = addressMode am
-raw (LDRH rd am) = writeBack
-               .>> set rd (memory16 address)
+raw (LDRH rd am) = set rd (memory16 address)
+               .>> writeBack
   where (address, writeBack) = addressMode am
-raw (LDRSH rd am) = writeBack
-                .>> set rd (signExtend 16 32 .$ memory16 address)
+raw (LDRSH rd am) = set rd (signExtend 16 32 .$ memory16 address)
+                .>> writeBack
   where (address, writeBack) = addressMode am
-raw (STR rd am) = writeBack
-              .>> set (memory32 address) rd
+raw (STR rd am) = set (memory32 address) rd
+              .>> writeBack
   where (address, writeBack) = addressMode am
-raw (STRT rd am) = writeBack
-              .>> set (memory32 address) rd
+raw (STRT rd am) = set (memory32 address) rd
+               .>> writeBack
   where (address, writeBack) = addressMode am
-raw (STRB rd am) = writeBack
-              .>> set (memory8 address) (bitRange 0 7 .$ rd)
+raw (STRB rd am) = set (memory8 address) (bitRange 0 7 .$ rd)
+               .>> writeBack
   where (address, writeBack) = addressMode am
-raw (STRBT rd am) = writeBack
-              .>> set (memory8 address) (bitRange 0 7 .$ rd)
+raw (STRBT rd am) = set (memory8 address) (bitRange 0 7 .$ rd)
+                .>> writeBack
   where (address, writeBack) = addressMode am
-raw (STRH rd am) = writeBack
-              .>> set (memory16 address) (bitRange 0 15 .$ rd)
+raw (STRH rd am) = set (memory16 address) (bitRange 0 15 .$ rd)
+               .>> writeBack
   where (address, writeBack) = addressMode am
+-- Load and store multiple instructions
+raw (LDM1 rn am registers) = fst $ foldr for (_id, 0) registers
+  where (address, writeBack) = addressMode4 am registers
+        for r (e, ii) = (e', ii .+ 4)
+          where e' = e 
+                 .>> set r (memory32 $ address .+ (4 .* ii))
+-- TODO: LDM2 is incorrect. It needs to load to user registers
+-- which is currently impossible with how the CPU is set up.
+raw (LDM2 rn am registers) = fst $ foldr for (_id, 0) registers
+  where (address, writeBack) = addressMode4 am registers
+        for r (e, ii) = (e', ii .+ 4)
+          where e' = e 
+                 .>> set r (memory32 $ address .+ (4 .* ii))
+raw (LDM3 rn am registers) = (fst $ foldr for (_id, 0) registers)
+                         .>> set cpsr spsr
+  where (address, writeBack) = addressMode4 am registers
+        for r (e, ii) = (e', ii .+ 4)
+          where e' = e 
+                 .>> set r (memory32 $ address .+ (4 .* ii))
+raw (STM1 rn am registers) = fst $ foldr for (_id, 0) registers
+  where (address, writeBack) = addressMode4 am registers
+        for r (e, ii) = (e', ii .+ 4)
+          where e' = e 
+                 .>> set (memory32 $ address .+ (4 .* ii)) r
+-- TODO: STM2 is incorrect. It needs to store to user registers
+-- which is currently impossible with how the CPU is set up.
+raw (STM2 rn am registers) = fst $ foldr for (_id, 0) registers
+  where (address, writeBack) = addressMode4 am registers
+        for r (e, ii) = (e', ii .+ 4)
+          where e' = e 
+                 .>> set (memory32 $ address .+ (4 .* ii)) r
   
                     
 
