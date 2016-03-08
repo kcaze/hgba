@@ -29,28 +29,35 @@ decodeInstruction :: Word32 -> Maybe Instruction
 decodeInstruction x
   | (x .&. 0x0E000000) == 0x0A000000 = d decodeB
   | (x .&. 0x0FFFFFF0) == 0x012FFF10 = d decodeBX
-  | (x .&. 0x0DE00000) == 0x00000000 = d decodeAND
-  | (x .&. 0x0DE00000) == 0x00200000 = d decodeEOR
-  | (x .&. 0x0DE00000) == 0x00400000 = d decodeSUB
-  | (x .&. 0x0DE00000) == 0x00600000 = d decodeRSB
-  | (x .&. 0x0DE00000) == 0x00800000 = d decodeADD
-  | (x .&. 0x0DE00000) == 0x00A00000 = d decodeADC
-  | (x .&. 0x0DE00000) == 0x00C00000 = d decodeSBC
-  | (x .&. 0x0DE00000) == 0x00E00000 = d decodeRSC
-  | (x .&. 0x0DE00000) == 0x01000000 = d decodeTST
-  | (x .&. 0x0DE00000) == 0x01200000 = d decodeTEQ
-  | (x .&. 0x0DE00000) == 0x01400000 = d decodeCMP
-  | (x .&. 0x0DE00000) == 0x01600000 = d decodeCMN
-  | (x .&. 0x0DE00000) == 0x01800000 = d decodeORR
-  | (x .&. 0x0DE00000) == 0x01A00000 = d decodeMOV
-  | (x .&. 0x0DE00000) == 0x01C00000 = d decodeBIC
-  | (x .&. 0x0DE00000) == 0x01E00000 = d decodeMVN
+  | (x .&. 0x0DE00000) == 0x00000000 && isData x = d decodeAND
+  | (x .&. 0x0DE00000) == 0x00200000 && isData x = d decodeEOR
+  | (x .&. 0x0DE00000) == 0x00400000 && isData x = d decodeSUB
+  | (x .&. 0x0DE00000) == 0x00600000 && isData x = d decodeRSB
+  | (x .&. 0x0DE00000) == 0x00800000 && isData x = d decodeADD
+  | (x .&. 0x0DE00000) == 0x00A00000 && isData x = d decodeADC
+  | (x .&. 0x0DE00000) == 0x00C00000 && isData x = d decodeSBC
+  | (x .&. 0x0DE00000) == 0x00E00000 && isData x = d decodeRSC
+  | (x .&. 0x0DE00000) == 0x01000000 && isData x = d decodeTST
+  | (x .&. 0x0DE00000) == 0x01200000 && isData x = d decodeTEQ
+  | (x .&. 0x0DE00000) == 0x01400000 && isData x = d decodeCMP
+  | (x .&. 0x0DE00000) == 0x01600000 && isData x = d decodeCMN
+  | (x .&. 0x0DE00000) == 0x01800000 && isData x = d decodeORR
+  | (x .&. 0x0DE00000) == 0x01A00000 && isData x = d decodeMOV
+  | (x .&. 0x0DE00000) == 0x01C00000 && isData x = d decodeBIC
+  | (x .&. 0x0DE00000) == 0x01E00000 && isData x = d decodeMVN
+  | (x .&. 0x0FE000F0) == 0x00000090 = d decodeMUL
+  | (x .&. 0x0FE000F0) == 0x00200090 = d decodeMLA
+  | (x .&. 0x0FE000F0) == 0x00C00090 = d decodeSMULL
+  | (x .&. 0x0FE000F0) == 0x00800090 = d decodeUMULL
+  | (x .&. 0x0FE000F0) == 0x00E00090 = d decodeSMLAL
+  | (x .&. 0x0FE000F0) == 0x00A00090 = d decodeUMLAL
   | otherwise = Nothing
   where condition = decodeCond (x `shiftR` 0x1C)
         d :: (Word32 -> Maybe RawInstruction) -> Maybe Instruction
         d f = case (f x) of
                 (Just ri) -> (Just $ Instruction condition ri)
                 Nothing   -> Nothing
+        isData x = (x .&. 0x02000090) /= 0x00000090
 
 -- Branch instructions.
 decodeB x = Just $ B (x `testBit` 24) (pure $ x .&. 0x00FFFFFF)
@@ -72,7 +79,7 @@ decodeRSC = decodeDataProcess RSC
 decodeTST x = Just $ TST rn shift
   where rn = register (fromIntegral $ bitRange 16 19 x)
         shift = decodeShifterOperand x
-decodeTEQ x = Just $ TST rn shift
+decodeTEQ x = Just $ TEQ rn shift
   where rn = register (fromIntegral $ bitRange 16 19 x)
         shift = decodeShifterOperand x
 decodeCMP x = Just $ CMP rn shift
@@ -91,6 +98,42 @@ decodeMVN x = Just $ MVN sFlag rd shift
   where sFlag = x `testBit` 20
         rd = register (fromIntegral $ bitRange 12 15 x)
         shift = decodeShifterOperand x
+-- Multiply instructions
+decodeMUL x = Just $ MUL sFlag rd rm rs
+  where sFlag = x `testBit` 20
+        rd = register (fromIntegral $ bitRange 16 19 x)
+        rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+decodeMLA x = Just $ MLA sFlag rd rm rs rn
+  where sFlag = x `testBit` 20
+        rd = register (fromIntegral $ bitRange 16 19 x)
+        rn = register (fromIntegral $ bitRange 12 15 x)
+        rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+decodeSMULL x = Just $ SMULL sFlag rdlo rdhi rm rs
+  where sFlag = x `testBit` 20
+        rdhi = register (fromIntegral $ bitRange 16 19 x)
+        rdlo = register (fromIntegral $ bitRange 12 15 x)
+        rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+decodeUMULL x = Just $ UMULL sFlag rdlo rdhi rm rs
+  where sFlag = x `testBit` 20
+        rdhi = register (fromIntegral $ bitRange 16 19 x)
+        rdlo = register (fromIntegral $ bitRange 12 15 x)
+        rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+decodeSMLAL x = Just $ SMLAL sFlag rdlo rdhi rm rs
+  where sFlag = x `testBit` 20
+        rdhi = register (fromIntegral $ bitRange 16 19 x)
+        rdlo = register (fromIntegral $ bitRange 12 15 x)
+        rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+decodeUMLAL x = Just $ UMLAL sFlag rdlo rdhi rm rs
+  where sFlag = x `testBit` 20
+        rdhi = register (fromIntegral $ bitRange 16 19 x)
+        rdlo = register (fromIntegral $ bitRange 12 15 x)
+        rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
 
 -- 32-bit immediate
 decodeShifterOperand x
