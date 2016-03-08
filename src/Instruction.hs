@@ -105,7 +105,8 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | MLA Bool Register Register Register Register
                     | MOV Bool Register Shifter
                     | MRS Bool Register
-                    | MSR Bool (Immediate Word32) Shifter
+                    | MSR_immediate Bool (Immediate Word32) (Immediate Word32) (Immediate Int)
+                    | MSR_register Bool (Immediate Word32) Register
                     | MUL Bool Register Register Register
                     | MVN Bool Register Shifter
                     | ORR Bool Register Register Shifter
@@ -290,10 +291,10 @@ raw (UMLAL sFlag rdlo rdhi rm rs) =
         to32 x = fromIntegral x :: Word32
         carry = _if (_carryFrom (to32 .$ _bitRange 0 31 prod) rdlo) % 1 ! 0
 -- Status register access instructions
-raw (MRS rbit rd) = set rd psr
-  where psr = if rbit then spsr else cpsr
-raw (MSR rbit fieldMask shift) = 
-  if not rbit then (
+raw (MRS rFlag rd) = set rd psr
+  where psr = if rFlag then spsr else cpsr
+raw (MSR_immediate rFlag fieldMask immed8 rotateImm) = 
+  if not rFlag then (
     let mask = _if (processorMode ./= pure User)
                %   (byteMask .& (userMask .| privMask))
                !   (byteMask .& userMask)
@@ -302,7 +303,26 @@ raw (MSR rbit fieldMask shift) =
     let mask = byteMask .& (userMask .| privMask .| stateMask)
     in set spsr ((spsr .& (complement .$ mask)) .| (operand .& mask))
   )
-  where operand = shifterOperand shift
+  where operand = immed8 .@> (rotateImm .* 2)
+        unallocMask = 0x0FFFFF00
+        userMask = 0xF0000000
+        privMask = 0x0000000F
+        stateMask = 0x00000020
+        byteMask = (_if (_testBit fieldMask 0) % 0x000000FF ! 0) .|
+                   (_if (_testBit fieldMask 1) % 0x0000FF00 ! 0) .|
+                   (_if (_testBit fieldMask 2) % 0x00FF0000 ! 0) .|
+                   (_if (_testBit fieldMask 3) % 0xFF000000 ! 0)
+raw (MSR_register rFlag fieldMask rm) = 
+  if not rFlag then (
+    let mask = _if (processorMode ./= pure User)
+               %   (byteMask .& (userMask .| privMask))
+               !   (byteMask .& userMask)
+    in set cpsr ((cpsr .& (complement .$ mask)) .| (operand .& mask))
+  ) else (
+    let mask = byteMask .& (userMask .| privMask .| stateMask)
+    in set spsr ((spsr .& (complement .$ mask)) .| (operand .& mask))
+  )
+  where operand = rm
         unallocMask = 0x0FFFFF00
         userMask = 0xF0000000
         privMask = 0x0000000F

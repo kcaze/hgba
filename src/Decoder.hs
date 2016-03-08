@@ -37,20 +37,23 @@ decodeInstruction x
   | (x .&. 0x0DE00000) == 0x00A00000 && isData x = d decodeADC
   | (x .&. 0x0DE00000) == 0x00C00000 && isData x = d decodeSBC
   | (x .&. 0x0DE00000) == 0x00E00000 && isData x = d decodeRSC
-  | (x .&. 0x0DE00000) == 0x01000000 && isData x = d decodeTST
-  | (x .&. 0x0DE00000) == 0x01200000 && isData x = d decodeTEQ
-  | (x .&. 0x0DE00000) == 0x01400000 && isData x = d decodeCMP
-  | (x .&. 0x0DE00000) == 0x01600000 && isData x = d decodeCMN
+  | (x .&. 0x0DE0F000) == 0x01000000 && isData x = d decodeTST
+  | (x .&. 0x0DE0F000) == 0x01200000 && isData x = d decodeTEQ
+  | (x .&. 0x0DE0F000) == 0x01400000 && isData x = d decodeCMP
+  | (x .&. 0x0DE0F000) == 0x01600000 && isData x = d decodeCMN
   | (x .&. 0x0DE00000) == 0x01800000 && isData x = d decodeORR
-  | (x .&. 0x0DE00000) == 0x01A00000 && isData x = d decodeMOV
+  | (x .&. 0x0DEF0000) == 0x01A00000 && isData x = d decodeMOV
   | (x .&. 0x0DE00000) == 0x01C00000 && isData x = d decodeBIC
-  | (x .&. 0x0DE00000) == 0x01E00000 && isData x = d decodeMVN
+  | (x .&. 0x0DEF0000) == 0x01E00000 && isData x = d decodeMVN
   | (x .&. 0x0FE000F0) == 0x00000090 = d decodeMUL
   | (x .&. 0x0FE000F0) == 0x00200090 = d decodeMLA
   | (x .&. 0x0FE000F0) == 0x00C00090 = d decodeSMULL
   | (x .&. 0x0FE000F0) == 0x00800090 = d decodeUMULL
   | (x .&. 0x0FE000F0) == 0x00E00090 = d decodeSMLAL
   | (x .&. 0x0FE000F0) == 0x00A00090 = d decodeUMLAL
+  | (x .&. 0x0FBF0FFF) == 0x010F0000 = d decodeMRS
+  | (x .&. 0x0FB0F000) == 0x0320F000 = d decodeMSR_immediate
+  | (x .&. 0x0FB0FFF0) == 0x0120F000 = d decodeMSR_register
   | otherwise = Nothing
   where condition = decodeCond (x `shiftR` 0x1C)
         d :: (Word32 -> Maybe RawInstruction) -> Maybe Instruction
@@ -133,6 +136,19 @@ decodeUMLAL x = Just $ UMLAL sFlag rdlo rdhi rm rs
         rdhi = register (fromIntegral $ bitRange 16 19 x)
         rdlo = register (fromIntegral $ bitRange 12 15 x)
         rs = register (fromIntegral $ bitRange 8 11 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+-- Status register access instruction
+decodeMRS x = Just $ MRS rFlag rd
+  where rFlag = x `testBit` 22
+        rd = register (fromIntegral $ bitRange 12 15 x)
+decodeMSR_immediate x = Just $ MSR_immediate rFlag fieldMask immed8 rotateImm
+  where rFlag = x `testBit` 22
+        fieldMask = pure $ bitRange 16 19 x
+        immed8 = pure $ bitRange 0 7 x
+        rotateImm = pure $ (fromIntegral $ bitRange 8 11 x)
+decodeMSR_register x = Just $ MSR_register rFlag fieldMask rm
+  where rFlag = x `testBit` 22
+        fieldMask = pure $ bitRange 16 19 x
         rm = register (fromIntegral $ bitRange 0 3 x)
 
 -- 32-bit immediate
