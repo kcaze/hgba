@@ -137,6 +137,7 @@ class (Num a, Ord a, Integral a, FiniteBits a) => Bits' a where
   bitLength :: a -> Int
   bits :: Int -> Int -> a
   bitRange :: Int -> Int -> a -> a
+  testMask :: a -> a -> Bool
   logicalShiftLeft :: a -> Int -> a
   logicalShiftRight :: a -> Int -> a
   arithmeticShiftRight :: a -> Int -> a
@@ -153,6 +154,7 @@ class (Num a, Ord a, Integral a, FiniteBits a) => Bits' a where
     | l > h = 0
     | otherwise = bit l .|. bits (l+1) h
   bitRange l h w = (w .&. bits l h) `logicalShiftRight` l
+  testMask x y = (x .&. y) /= 0
   logicalShiftLeft = shiftL
   logicalShiftRight w n = shiftR w n .&. bits 0 (bitLength w - 1 - n)
   arithmeticShiftRight w n = shiftR w n .&. bits 0 (bitLength w - 1 - n)
@@ -184,6 +186,7 @@ instance Bits' Int64
 _xor :: (Bits a, Applicative f) => f a -> f a -> f a
 _not :: Applicative f => f Bool -> f Bool
 _testBit :: (Bits a, Applicative f) => f a -> f Int -> f Bool
+_testMask :: (Bits' a, Applicative f) => f a -> f a -> f Bool
 _bits :: (Bits' a, Applicative f) => Int -> Int -> f a
 _bitRange :: (Bits' a, Applicative f) => Int -> Int -> f a -> f a
 _logicalShiftLeft :: (Bits' a, Applicative f) => f a -> f Int -> f a
@@ -199,6 +202,7 @@ _overflowFromSub :: (Bits' a, Applicative f) => f a -> f a -> f Bool
 _xor = liftA2 xor
 _not = fmap not
 _testBit = liftA2 testBit
+_testMask = liftA2 testMask
 _bits x y = pure $ bits x y
 _bitRange x y = fmap $ bitRange x y
 _logicalShiftLeft = liftA2 logicalShiftLeft

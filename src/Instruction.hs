@@ -375,8 +375,6 @@ raw (STM2 rn am registers) = fst $ foldr for (_id, 0) registers
           where e' = e 
                  .>> set (memory32 $ address .+ (4 .* ii)) r
   
-                    
-
 -- Condition codes
 eq = zFlag
 ne = _not zFlag

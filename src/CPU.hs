@@ -6,6 +6,7 @@ module CPU ( ProcessorMode(..)
            , Execute
            , r0, r1, r2, r3, r4, r5, r6, r7, r8, r9
            , r10, r11, r12, r13, r14, r15, sp, lr, pc
+           , register
            , cpsr, spsr
            , nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag
            , nBit, zBit, cBit, vBit, iBit, fBit, tBit
@@ -235,6 +236,24 @@ setMemory32 a w cpu = cpu { cpu_memory = write32 a w (cpu_memory cpu) }
          (getR12, setR12), (getR13, setR13), (getR14, setR14), (getR15, setR15),
          (getR13, setR13), (getR14, setR14), (getR15, setR15), (getCPSR, setCPSR),
          (getSPSR, setSPSR)]
+register :: Int -> Register
+register 0 = r0
+register 1 = r1
+register 2 = r2
+register 3 = r3
+register 4 = r4
+register 5 = r5
+register 6 = r6
+register 7 = r7
+register 8 = r8
+register 9 = r9
+register 10 = r10
+register 11 = r11
+register 12 = r12
+register 13 = r13
+register 14 = r14
+register 15 = r15
+
 [nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag] = map (uncurry Mutable) bs :: [Flag]
   where bs = [(getNFlag, setNFlag), (getZFlag, setZFlag), (getCFlag, setCFlag),
               (getVFlag, setVFlag), (getIFlag, setIFlag), (getFFlag, setFFlag),

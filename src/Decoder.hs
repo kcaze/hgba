@@ -1,38 +1,40 @@
+{-# LANGUAGE BinaryLiterals #-}
 module Decoder where
 
 import Data.Bits
 import Data.Word
-import Prelude hiding (EQ, LT, GT)
-import Types
-import Util
+import Bits
+import CPU
+import Instruction
 
-decodeCond :: Word32 -> ConditionCode
-decodeCond w = decodeCond' (w `shiftR` 28)
-  where decodeCond' 0x0 = EQ
-        decodeCond' 0x1 = NE
-        decodeCond' 0x2 = HS
-        decodeCond' 0x3 = LO
-        decodeCond' 0x4 = MI
-        decodeCond' 0x5 = PL
-        decodeCond' 0x6 = VS
-        decodeCond' 0x7 = VC
-        decodeCond' 0x8 = HI
-        decodeCond' 0x9 = LS
-        decodeCond' 0xA = GE
-        decodeCond' 0xB = LT
-        decodeCond' 0xC = GT
-        decodeCond' 0xD = LE
-        decodeCond' 0xE = AL
-        decodeCond' 0xF = undefined
+decodeCond :: Word32 -> Flag
+decodeCond 0x0 = eq
+decodeCond 0x1 = ne
+decodeCond 0x2 = hs
+decodeCond 0x3 = lo
+decodeCond 0x4 = mi
+decodeCond 0x5 = pl
+decodeCond 0x6 = vs
+decodeCond 0x7 = vc
+decodeCond 0x8 = hi
+decodeCond 0x9 = ls
+decodeCond 0xA = ge
+decodeCond 0xB = lt
+decodeCond 0xC = gt
+decodeCond 0xD = le
+decodeCond 0xE = al
+decodeCond 0xF = error "Decoded undefined condition code."
 
 decodeInstruction :: Word32 -> Maybe Instruction
 decodeInstruction x
   | testMask x 0x0A000000 = d decodeB
   | testMask x 0x012FFF10 = d decodeBX
   | otherwise = Nothing
-  where condition = decodeCond x
-        d :: (Word32 -> RawInstruction) -> Maybe Instruction
-        d f = Just $ Instruction condition (f x)
+  where condition = decodeCond (x `shiftR` 0x1C)
+        d :: (Word32 -> Maybe RawInstruction) -> Maybe Instruction
+        d f = case (f x) of
+                (Just ri) -> (Just $ Instruction condition ri)
+                Nothing   -> Nothing
 
-decodeB x = B (x `testBit` 24) (x .&. 0x00FFFFFF)
-decodeBX x = BX (fromIntegral $ x .&. 0x0000000F)
+decodeB x = Just $ B (x `testBit` 24) (pure $ x .&. 0x00FFFFFF)
+decodeBX x = Just $ BX (register (fromIntegral $ x .&. 0x0000000F))
