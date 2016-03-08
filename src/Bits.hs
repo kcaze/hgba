@@ -9,38 +9,11 @@ class Gettable t where
   get :: (t s a) -> (s -> a)
   fromFunction :: (s -> a) -> (t s a)
 
-data Value s a = Immutable (s -> a)
-               | Mutable (s -> a) (a -> s -> s)
-
-set :: Value s a -> (Value s a -> Value s s)
-set (Mutable _ s) = \value -> fromFunction (\state -> s (get value state) state)
-set _ = error "Attempting to set immutable value."
-
 instance Gettable (->) where
   get = id
   fromFunction = id
 
-instance Gettable (Value) where
-  get (Immutable g) = g
-  get (Mutable g _) = g
-  fromFunction = Immutable
-
-instance Functor (Value s) where
-  fmap f x = Immutable $ fmap f (get x)
-
-instance Applicative (Value s) where
-  pure x = Immutable (const x)
-  x <*> y = Immutable (get x <*> get y)
-
 instance (Num a) => Num (s -> a) where
-  (+) = liftA2 (+)
-  (*) = liftA2 (*)
-  abs = fmap abs
-  signum = fmap signum
-  negate = fmap negate
-  fromInteger n = fromFunction (const . fromInteger $ n)
-
-instance (Num a) => Num (Value s a) where
   (+) = liftA2 (+)
   (*) = liftA2 (*)
   abs = fmap abs

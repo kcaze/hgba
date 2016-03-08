@@ -4,6 +4,7 @@ module CPU ( ProcessorMode(..)
            , Register
            , Flag
            , Execute
+           , set
            , r0, r1, r2, r3, r4, r5, r6, r7, r8, r9
            , r10, r11, r12, r13, r14, r15, sp, lr, pc
            , register
@@ -17,6 +18,7 @@ module CPU ( ProcessorMode(..)
            , reset, powerUp
            ) where
 
+import Control.Applicative
 import Data.Bits
 import qualified Data.Map as Map
 import Data.Word
@@ -35,6 +37,48 @@ fromFlag (Immutable g) = Immutable ((\x -> if x then 1 else 0) . g)
 fromFlag (Mutable g s) = Mutable ((\x -> if x then 1 else 0) . g) (s . (/= 0))
 
 -- Data types
+data Value s a = Immutable (s -> a)
+               | Immediate a
+               | Register Int (s -> a) (a -> s -> s)
+               | Mutable (s -> a) (a -> s -> s)
+
+set :: Value s a -> (Value s a -> Value s s)
+set (Mutable _ s) = \value -> fromFunction (\state -> s (get value state) state)
+set _ = error "Attempting to set immutable value."
+
+instance Gettable (Value) where
+  get (Immutable g) = g
+  get (Immediate x) = const x
+  get (Register _ g _) = g
+  get (Mutable g _) = g
+  fromFunction = Immutable
+
+instance Functor (Value s) where
+  fmap f x = Immutable $ fmap f (get x)
+
+instance Applicative (Value s) where
+  pure x = Immediate x
+  x <*> y = Immutable (get x <*> get y)
+
+instance (Num a) => Num (Value s a) where
+  (+) = liftA2 (+)
+  (*) = liftA2 (*)
+  abs = fmap abs
+  signum = fmap signum
+  negate = fmap negate
+  fromInteger n = pure (fromInteger n)
+
+instance (Show a) => Show (Value s a) where
+  show (Immutable _) = "<Immutable>"
+  show (Immediate x) = "<Immediate " ++ show x ++ ">"
+  show (Register n _ _)  = "<Register " ++ show n ++ ">"
+  show (Mutable _ _)  = "<Mutable>"
+
+instance (Eq a) => Eq (Value s a) where
+  (Immediate x) == (Immediate y) = x == y
+  (Register n _ _) == (Register m _ _) = n == m
+  _ == _ = False
+
 type Immediate a = Value CPU a 
 type Register = Value CPU Word32
 type Flag = Value CPU Bool
@@ -229,13 +273,15 @@ setMemory32 a w cpu = cpu { cpu_memory = write32 a w (cpu_memory cpu) }
 
 -- Mutable CPU values
 [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15,
- sp, lr, pc, cpsr, spsr] = map (uncurry Mutable) rs :: [Register]
-  where rs = [(getR0, setR0), (getR1, setR1), (getR2, setR2), (getR3, setR3),
-         (getR4, setR4), (getR5, setR5), (getR6, setR6), (getR7, setR7),
-         (getR8, setR8), (getR9, setR9), (getR10, setR10), (getR11, setR11),
-         (getR12, setR12), (getR13, setR13), (getR14, setR14), (getR15, setR15),
-         (getR13, setR13), (getR14, setR14), (getR15, setR15), (getCPSR, setCPSR),
-         (getSPSR, setSPSR)]
+ sp, lr, pc] = map (uncurry $ uncurry Register) rs :: [Register]
+  where rs = [((0, getR0), setR0), ((1, getR1), setR1), ((2, getR2), setR2),
+              ((3, getR3), setR3), ((4, getR4), setR4), ((5, getR5), setR5),
+              ((6, getR6), setR6), ((7, getR7), setR7), ((8, getR8), setR8),
+              ((9, getR9), setR9), ((10, getR10), setR10), ((11, getR11), setR11),
+              ((12, getR12), setR12), ((13, getR13), setR13), ((14, getR14), setR14),
+              ((15, getR15), setR15), ((13, getR13), setR13), ((14, getR14), setR14),
+              ((15, getR15), setR15)]
+
 register :: Int -> Register
 register 0 = r0
 register 1 = r1
@@ -253,6 +299,9 @@ register 12 = r12
 register 13 = r13
 register 14 = r14
 register 15 = r15
+
+cpsr = Mutable getCPSR setCPSR
+spsr = Mutable getSPSR setSPSR
 
 [nFlag, zFlag, cFlag, vFlag, iFlag, fFlag, tFlag] = map (uncurry Mutable) bs :: [Flag]
   where bs = [(getNFlag, setNFlag), (getZFlag, setZFlag), (getCFlag, setCFlag),

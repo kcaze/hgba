@@ -10,25 +10,28 @@ import CPU
 
 data Shifter = I_operand (Immediate Word32) (Immediate Int)
              | R_operand Register
-             | R_LSL_I_operand Register (Immediate Int)
-             | R_LSL_R_operand Register Register
-             | R_LSR_I_operand Register (Immediate Int)
-             | R_LSR_R_operand Register Register
-             | R_ASR_I_operand Register (Immediate Int)
-             | R_ASR_R_operand Register Register
-             | R_ROR_I_operand Register (Immediate Int)
-             | R_ROR_R_operand Register Register
-             | R_RRX_operand Register
-data SFlag = SFlagOff | SFlagOn | SFlagOnR15
+             | LSL_I_operand Register (Immediate Int)
+             | LSL_R_operand Register Register
+             | LSR_I_operand Register (Immediate Int)
+             | LSR_R_operand Register Register
+             | ASR_I_operand Register (Immediate Int)
+             | ASR_R_operand Register Register
+             | ROR_I_operand Register (Immediate Int)
+             | ROR_R_operand Register Register
+             | RRX_operand Register
+  deriving (Show, Eq)
 
 data AddressingModeType = NoIndex | PreIndex | PostIndex
+  deriving (Show, Eq)
 data AddressingMode = AddrMode1 AddressingModeType Bool Register Word32
                     | AddrMode2 AddressingModeType Bool Register Register
                     | AddrMode3 AddressingModeType Bool Register Register Int Int
+  deriving (Show, Eq)
 data AddressingMode4 = IA Bool Register
                      | IB Bool Register
                      | DA Bool Register
                      | DB Bool Register
+  deriving (Show, Eq)
 -- Evaluating an address mode results in an address and an execute.
 -- The execute is necessary for base register write-back.
 addressMode :: AddressingMode -> (Immediate Word32, Execute)
@@ -79,15 +82,16 @@ addressMode4 (DB wflag rn) registerList = (startAddress, writeBack)
         writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
 
 data Instruction = Instruction Flag RawInstruction
-data RawInstruction = ADC SFlag Register Register Shifter
-                    | ADD SFlag Register Register Shifter
-                    | AND SFlag Register Register Shifter
+  deriving (Show, Eq)
+data RawInstruction = ADC Bool Register Register Shifter
+                    | ADD Bool Register Register Shifter
+                    | AND Bool Register Register Shifter
                     | B Bool (Immediate Word32)
-                    | BIC SFlag Register Register Shifter
+                    | BIC Bool Register Register Shifter
                     | BX Register
                     | CMN Register Shifter
                     | CMP Register Shifter
-                    | EOR SFlag Register Register Shifter
+                    | EOR Bool Register Register Shifter
                     | LDM1 Register AddressingMode4 [Register]
                     | LDM2 Register AddressingMode4 [Register]
                     | LDM3 Register AddressingMode4 [Register]
@@ -98,18 +102,18 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | LDRT Register AddressingMode
                     | LDRSB Register AddressingMode
                     | LDRSH Register AddressingMode
-                    | MLA SFlag Register Register Register Register
-                    | MOV SFlag Register Shifter
+                    | MLA Bool Register Register Register Register
+                    | MOV Bool Register Shifter
                     | MRS Bool Register
                     | MSR Bool (Immediate Word32) Shifter
-                    | MUL SFlag Register Register Register
-                    | MVN SFlag Register Shifter
-                    | ORR SFlag Register Register Shifter
-                    | RSB SFlag Register Register Shifter
-                    | RSC SFlag Register Register Shifter
-                    | SBC SFlag Register Register Shifter
-                    | SMLAL SFlag Register Register Register Register
-                    | SMULL SFlag Register Register Register Register
+                    | MUL Bool Register Register Register
+                    | MVN Bool Register Shifter
+                    | ORR Bool Register Register Shifter
+                    | RSB Bool Register Register Shifter
+                    | RSC Bool Register Register Shifter
+                    | SBC Bool Register Register Shifter
+                    | SMLAL Bool Register Register Register Register
+                    | SMULL Bool Register Register Register Register
                     | STM1 Register AddressingMode4 [Register]
                     | STM2 Register AddressingMode4 [Register]
                     | STR Register AddressingMode
@@ -117,11 +121,12 @@ data RawInstruction = ADC SFlag Register Register Shifter
                     | STRBT Register AddressingMode
                     | STRH Register AddressingMode
                     | STRT Register AddressingMode
-                    | SUB SFlag Register Register Shifter
+                    | SUB Bool Register Register Shifter
                     | TEQ Register Shifter
                     | TST Register Shifter
-                    | UMLAL SFlag Register Register Register Register
-                    | UMULL SFlag Register Register Register Register
+                    | UMLAL Bool Register Register Register Register
+                    | UMULL Bool Register Register Register Register
+  deriving (Show, Eq)
 instruction :: Instruction -> Execute
 instruction (Instruction c r) = _if c % raw r ! _id
 
@@ -232,54 +237,54 @@ raw (MVN s rd shift) = dataProcess s rd rd shift op n z c v
         c = shifterCarry shift
         v = vFlag
 -- Multiply instructions 
-raw (MUL s rd rm rs) = set rd (rm .* rs)
-                   .>> (case s of
-                          SFlagOn -> (set nFlag (rd .|?| 31)
-                                 .>>  set zFlag (rd .== 0))
-                          _       -> _id)
-raw (MLA s rd rm rs rn) = set rd ((rm .* rs) .+ rn)
-                      .>> (case s of
-                             SFlagOn -> (set nFlag (rd .|?| 31)
-                                 .>>  set zFlag (rd .== 0))
-                             _       -> _id)
-raw (SMULL s rdlo rdhi rm rs) =
+raw (MUL sFlag rd rm rs) = set rd (rm .* rs)
+                   .>> (if sFlag then (
+                          set nFlag (rd .|?| 31) .>>
+                          set zFlag (rd .== 0)
+                        ) else _id)
+raw (MLA sFlag rd rm rs rn) = set rd ((rm .* rs) .+ rn)
+                      .>> (if sFlag then (
+                             set nFlag (rd .|?| 31) .>>
+                             set zFlag (rd .== 0)
+                           ) else _id)
+raw (SMULL sFlag rdlo rdhi rm rs) =
       set rdhi (to32 .$ _bitRange 32 63 prod)
   .>> set rdlo (to32 .$ _bitRange  0 31 prod)
-  .>> (case s of
-        SFlagOn -> (set nFlag (rdhi .|?| 31)
-               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
-        _       -> _id)
+  .>> (if sFlag then (
+         set nFlag (rdhi .|?| 31) .>>
+         set zFlag ((rdhi .== 0) .&& (rdlo .== 0))
+       ) else _id)
   where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
         to64 x = fromIntegral (fromIntegral x :: Int32) :: Int64
         to32 x = fromIntegral x :: Word32
-raw (UMULL s rdlo rdhi rm rs) =
+raw (UMULL sFlag rdlo rdhi rm rs) =
       set rdhi (to32 .$ _bitRange 32 63 prod)
   .>> set rdlo (to32 .$ _bitRange  0 31 prod)
-  .>> (case s of
-        SFlagOn -> (set nFlag (rdhi .|?| 31)
-               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
-        _       -> _id)
+  .>> (if sFlag then (
+         set nFlag (rdhi .|?| 31) .>>
+         set zFlag ((rdhi .== 0) .&& (rdlo .== 0))
+       ) else _id)
   where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
         to64 x = fromIntegral x :: Word64
         to32 x = fromIntegral x :: Word32
-raw (SMLAL s rdlo rdhi rm rs) =
+raw (SMLAL sFlag rdlo rdhi rm rs) =
       set rdhi ((to32 .$ _bitRange 32 63 prod) .+ rdhi .+ carry)
   .>> set rdlo ((to32 .$ _bitRange  0 31 prod) .+ rdlo)
-  .>> (case s of
-        SFlagOn -> (set nFlag (rdhi .|?| 31)
-               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
-        _       -> _id)
+  .>> (if sFlag then (
+         set nFlag (rdhi .|?| 31) .>>
+         set zFlag ((rdhi .== 0) .&& (rdlo .== 0))
+       ) else _id)
   where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
         to64 x = fromIntegral (fromIntegral x :: Int32) :: Int64
         to32 x = fromIntegral x :: Word32
         carry = _if (_carryFrom (to32 .$ _bitRange 0 31 prod) rdlo) % 1 ! 0
-raw (UMLAL s rdlo rdhi rm rs) =
+raw (UMLAL sFlag rdlo rdhi rm rs) =
       set rdhi ((to32 .$ _bitRange 32 63 prod) .+ rdhi .+ carry)
   .>> set rdlo ((to32 .$ _bitRange  0 31 prod) .+ rdlo)
-  .>> (case s of
-        SFlagOn -> (set nFlag (rdhi .|?| 31)
-               .>>  set zFlag ((rdhi .== 0) .&& (rdlo .== 0)))
-        _       -> _id)
+  .>> (if sFlag then (
+         set nFlag (rdhi .|?| 31) .>>
+         set zFlag ((rdhi .== 0) .&& (rdlo .== 0))
+       ) else _id)
   where prod = liftA2 (*) (to64 .$ rm) (to64 .$ rs)
         to64 x = fromIntegral x :: Word64
         to32 x = fromIntegral x :: Word32
@@ -410,70 +415,72 @@ shifter (I_operand immed_8 rotate_imm) = do {
 
 shifter (R_operand rm) = _pair rm cFlag
 
-shifter (R_LSL_I_operand rm shift_imm) = do {
+shifter (LSL_I_operand rm shift_imm) = do {
   _if (shift_imm .== 0) % _pair rm cFlag
   !                       _pair (rm .<! shift_imm) (rm .|?| (32 - shift_imm))
 }
 
-shifter (R_LSL_R_operand rm rs) = do {
+shifter (LSL_R_operand rm rs) = do {
   _if  (rs' .== 0)  % _pair rm cFlag
   !_if (rs' .< 32)  % _pair (rm .<! rs') (rm .|?| (32 - rs'))
   !_if (rs' .== 32) % _pair 0 (rm .|?| 0)
   !                   _pair 0 (pure False)
 } where rs' = fromIntegral .$ (bitRange 0 7) .$ rs
 
-shifter (R_LSR_I_operand rm shift_imm) = do {
+shifter (LSR_I_operand rm shift_imm) = do {
   _if (shift_imm .== 0) % _pair 0 (rm .|?| 31)
   !                       _pair (rm .!> shift_imm) (rm .|?| (shift_imm - 1))
 }
 
-shifter (R_LSR_R_operand rm rs) = do {
+shifter (LSR_R_operand rm rs) = do {
   _if  (rs' .== 0)  % _pair rm cFlag
   !_if (rs' .< 32)  % _pair (rm .!> rs') (rm .|?| (rs' - 1))
   !_if (rs' .== 32) % _pair 0 (rm .|?| 31)
   !                   _pair 0 (pure False)
 } where rs' = fromIntegral .$ (bitRange 0 7) .$ rs
 
-shifter (R_ASR_I_operand rm shift_imm) = do {
+shifter (ASR_I_operand rm shift_imm) = do {
   _if (shift_imm .== 0) % (
     _if (not .$ (rm .|?| 31)) % _pair 0 (rm .|?| 31)
     !                           _pair 0xFFFFFFFF (rm .|?| 31)
   ) ! _pair (rm .?> shift_imm) (rm .|?| (shift_imm - 1))
 }
 
-shifter (R_ASR_R_operand rm rs) = do {
+shifter (ASR_R_operand rm rs) = do {
   _if (rs' .== 0)  % _pair rm cFlag
   !_if (rs' .< 32) % _pair (rm .?> rs') (rm .|?| (rs' - 1))
   ! ( _if (not .$ (rm .|?| 31)) % _pair 0 (rm .|?| 31)
       !                           _pair 0xFFFFFFFF (rm .|?| 31))
 } where rs' = fromIntegral .$ bitRange 0 7 .$ rs
 
-shifter (R_ROR_I_operand rm shift_imm) = do {
-  _if (shift_imm .== 0)  % shifter (R_RRX_operand rm)
+shifter (ROR_I_operand rm shift_imm) = do {
+  _if (shift_imm .== 0)  % shifter (RRX_operand rm)
   !                        _pair (rm .@> shift_imm) (rm .|?| (shift_imm - 1))
 }
 
-shifter (R_ROR_R_operand rm rs) = do {
+shifter (ROR_R_operand rm rs) = do {
   _if (rs' .== 0)   % _pair rm cFlag
   !_if (rs'' .== 0) % _pair rm (rm .|?| 31)
   !                   _pair (rm .@> rs'') (rm .|?| (rs'' -1))
 } where rs'  = fromIntegral .$ bitRange 0 7 .$ rs
         rs'' = fromIntegral .$ bitRange 0 4 .$ rs
 
-shifter (R_RRX_operand rm) = do {
+shifter (RRX_operand rm) = do {
   _pair ((c .<! 31) .| (rm .!> 1)) (rm .|?| 0)
 } where c = _if (cFlag) % 1 ! 0
 
 
-dataProcess :: SFlag -> Register -> Register -> Shifter
+dataProcess :: Bool -> Register -> Register -> Shifter
             -> (Register -> Immediate Word32 -> Immediate Word32)
             -> Flag -> Flag -> Flag -> Flag
             -> Execute
 dataProcess sFlag rd rn s op nVal zVal cVal vVal =
   set rd (rn `op` shifterOperand s)
-  .>> (case sFlag of SFlagOff -> _id
-                     SFlagOnR15 -> set cpsr spsr
-                     SFlagOn -> (set nFlag nVal
-                            .>>  set zFlag zVal
-                            .>>  set cFlag cVal
-                            .>>  set vFlag vVal))
+  .>> (if sFlag then (
+          _if (rd .== r15)
+          %   (set cpsr spsr)
+          !   (set nFlag nVal
+          .>>  set zFlag zVal
+          .>>  set cFlag cVal
+          .>>  set vFlag vVal)
+       ) else _id)
