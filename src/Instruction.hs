@@ -23,9 +23,12 @@ data Shifter = I_operand (Immediate Word32) (Immediate Int)
 
 data AddressingModeType = NoIndex | PreIndex | PostIndex
   deriving (Show, Eq)
-data AddressingMode = AddrMode1 AddressingModeType Bool Register Word32
-                    | AddrMode2 AddressingModeType Bool Register Register
-                    | AddrMode3 AddressingModeType Bool Register Register Int Int
+data AddressingMode2 = AddrMode2_1 AddressingModeType Bool Register (Immediate Word32)
+                     | AddrMode2_2 AddressingModeType Bool Register Register
+                     | AddrMode2_3 AddressingModeType Bool Register Register (Immediate Int) Int
+  deriving (Show, Eq)
+data AddressingMode3 = AddrMode3_1 AddressingModeType Bool Register (Immediate Word32) (Immediate Word32)
+                     | AddrMode3_2 AddressingModeType Bool Register Register
   deriving (Show, Eq)
 data AddressingMode4 = IA Bool Register
                      | IB Bool Register
@@ -34,29 +37,37 @@ data AddressingMode4 = IA Bool Register
   deriving (Show, Eq)
 -- Evaluating an address mode results in an address and an execute.
 -- The execute is necessary for base register write-back.
-addressMode :: AddressingMode -> (Immediate Word32, Execute)
-addressMode (AddrMode1 addrType uflag rn offset) = 
+addressMode2 :: AddressingMode2 -> (Immediate Word32, Execute)
+addressMode2 (AddrMode2_1 addrType uflag rn offset) = 
   addressMode' addrType rn address
-  where address = if uflag then rn .+ pure offset else rn .- pure offset
-addressMode (AddrMode2 addrType uflag rn rm) =
+  where address = if uflag then rn .+ offset else rn .- offset
+addressMode2 (AddrMode2_2 addrType uflag rn rm) =
   addressMode' addrType rn address
   where address = if uflag then rn .+ rm else rn .- rm
-addressMode (AddrMode3 addrType uflag rn rm immediate shift) =
+addressMode2 (AddrMode2_3 addrType uflag rn rm immediate shift) =
   addressMode' addrType rn address
   where index = case shift of
-                  0b00 -> (rm .<! pure immediate)
-                  0b01 -> if (immediate == 0) then 0 else (rm .!> pure immediate)
-                  0b10 -> if (immediate == 0) then (
+                  0b00 -> (rm .<! immediate)
+                  0b01 -> (_if (immediate .== 0) % 0 ! (rm .!> immediate))
+                  0b10 -> (_if (immediate .== 0) % (
                             _if (rm .|?| 31) % 0xFFFFFFFF ! 0
-                          ) else (rm .?> pure immediate)
-                  0b11 -> if (immediate == 0) then (
+                          ) ! (rm .?> immediate))
+                  0b11 -> (_if (immediate .== 0) % (
                             (cBit .<! 31) .| (rm .!> 1)
-                          ) else (rm .@> pure immediate)
+                          ) ! (rm .@> immediate))
         address = if uflag then rn .+ index else rn .- index
 
-addressMode' :: AddressingModeType ->
-                Register -> Immediate Word32 ->
-                (Immediate Word32, Execute)
+addressMode3 :: AddressingMode3 -> (Immediate Word32, Execute)
+addressMode3 (AddrMode3_1 addrType uFlag rn immedH immedL) =
+  addressMode' addrType rn address
+  where offset = (immedH .<! 4) .| immedL
+        address = if uFlag then rn .+ offset else rn .- offset
+addressMode3 (AddrMode3_2 addrType uFlag rn rm) =
+  addressMode' addrType rn address
+  where address = if uFlag then rn .+ rm else rn .- rm
+
+addressMode' :: AddressingModeType -> Register -> Immediate Word32 ->
+                 (Immediate Word32, Execute)
 addressMode' NoIndex _ address = (address, _id)
 addressMode' PreIndex rn address = (address, set rn address)
 addressMode' PostIndex rn address = (rn, set rn address)
@@ -95,13 +106,13 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | LDM1 Register AddressingMode4 [Register]
                     | LDM2 Register AddressingMode4 [Register]
                     | LDM3 Register AddressingMode4 [Register]
-                    | LDR Register AddressingMode
-                    | LDRB Register AddressingMode
-                    | LDRBT Register AddressingMode
-                    | LDRH Register AddressingMode
-                    | LDRT Register AddressingMode
-                    | LDRSB Register AddressingMode
-                    | LDRSH Register AddressingMode
+                    | LDR Register AddressingMode2
+                    | LDRB Register AddressingMode2
+                    | LDRBT Register AddressingMode2
+                    | LDRH Register AddressingMode3
+                    | LDRT Register AddressingMode2
+                    | LDRSB Register AddressingMode3
+                    | LDRSH Register AddressingMode3
                     | MLA Bool Register Register Register Register
                     | MOV Bool Register Shifter
                     | MRS Bool Register
@@ -117,11 +128,11 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | SMULL Bool Register Register Register Register
                     | STM1 Register AddressingMode4 [Register]
                     | STM2 Register AddressingMode4 [Register]
-                    | STR Register AddressingMode
-                    | STRB Register AddressingMode
-                    | STRBT Register AddressingMode
-                    | STRH Register AddressingMode
-                    | STRT Register AddressingMode
+                    | STR Register AddressingMode2
+                    | STRB Register AddressingMode2
+                    | STRBT Register AddressingMode2
+                    | STRH Register AddressingMode3
+                    | STRT Register AddressingMode2
                     | SUB Bool Register Register Shifter
                     | TEQ Register Shifter
                     | TST Register Shifter
@@ -334,40 +345,40 @@ raw (MSR_register rFlag fieldMask rm) =
 -- Load and store instructions
 raw (LDR rd am) = set rd (memory32 address)
               .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (LDRT rd am) = set rd (memory32 address)
                .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (LDRB rd am) = set rd (memory8 address)
                .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (LDRSB rd am) = set rd (signExtend 8 32 .$ memory8 address)
                 .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode3 am
 raw (LDRBT rd am) = set rd (memory8 address)
                 .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (LDRH rd am) = set rd (memory16 address)
                .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode3 am
 raw (LDRSH rd am) = set rd (signExtend 16 32 .$ memory16 address)
                 .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode3 am
 raw (STR rd am) = set (memory32 address) rd
               .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (STRT rd am) = set (memory32 address) rd
                .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (STRB rd am) = set (memory8 address) (bitRange 0 7 .$ rd)
                .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (STRBT rd am) = set (memory8 address) (bitRange 0 7 .$ rd)
                 .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode2 am
 raw (STRH rd am) = set (memory16 address) (bitRange 0 15 .$ rd)
                .>> writeBack
-  where (address, writeBack) = addressMode am
+  where (address, writeBack) = addressMode3 am
 -- Load and store multiple instructions
 raw (LDM1 rn am registers) = fst $ foldr for (_id, 0) registers
   where (address, writeBack) = addressMode4 am registers

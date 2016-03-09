@@ -54,6 +54,18 @@ decodeInstruction x
   | (x .&. 0x0FBF0FFF) == 0x010F0000 = d decodeMRS
   | (x .&. 0x0FB0F000) == 0x0320F000 = d decodeMSR_immediate
   | (x .&. 0x0FB0FFF0) == 0x0120F000 = d decodeMSR_register
+  | (x .&. 0x0C500000) == 0x04100000 = d decodeLDR
+  | (x .&. 0x0C500000) == 0x04500000 = d decodeLDRB
+  | (x .&. 0x0D700000) == 0x04700000 = d decodeLDRBT -- TODO
+  | (x .&. 0x0E1000F0) == 0x001000B0 = d decodeLDRH
+  | (x .&. 0x0D700000) == 0x04300000 = d decodeLDRT -- TODO
+  | (x .&. 0x0E1000F0) == 0x001000D0 = d decodeLDRSB
+  | (x .&. 0x0E1000F0) == 0x001000F0 = d decodeLDRSH
+  | (x .&. 0x0C500000) == 0x04000000 = d decodeSTR
+  | (x .&. 0x0D700000) == 0x04200000 = d decodeSTRT -- TODO
+  | (x .&. 0x0C500000) == 0x04400000 = d decodeSTRB
+  | (x .&. 0x0D700000) == 0x04600000 = d decodeSTRBT -- TODO
+  | (x .&. 0x0E1000F0) == 0x000000B0 = d decodeSTRH
   | otherwise = Nothing
   where condition = decodeCond (x `shiftR` 0x1C)
         d :: (Word32 -> Maybe RawInstruction) -> Maybe Instruction
@@ -137,7 +149,7 @@ decodeUMLAL x = Just $ UMLAL sFlag rdlo rdhi rm rs
         rdlo = register (fromIntegral $ bitRange 12 15 x)
         rs = register (fromIntegral $ bitRange 8 11 x)
         rm = register (fromIntegral $ bitRange 0 3 x)
--- Status register access instruction
+-- Status register access instructions.
 decodeMRS x = Just $ MRS rFlag rd
   where rFlag = x `testBit` 22
         rd = register (fromIntegral $ bitRange 12 15 x)
@@ -150,6 +162,25 @@ decodeMSR_register x = Just $ MSR_register rFlag fieldMask rm
   where rFlag = x `testBit` 22
         fieldMask = pure $ bitRange 16 19 x
         rm = register (fromIntegral $ bitRange 0 3 x)
+-- Load and store instructions.
+decodeLoadStore f x = Just $ f rd am
+  where rd = register (fromIntegral $ bitRange 12 15 x)
+        am = decodeAddressingMode2 x
+decodeLoadStore' f x = Just $ f rd am
+  where rd = register (fromIntegral $ bitRange 12 15 x)
+        am = decodeAddressingMode3 x
+decodeLDR = decodeLoadStore LDR
+decodeLDRB = decodeLoadStore LDRB
+decodeLDRBT = decodeLoadStore LDRBT
+decodeLDRH = decodeLoadStore' LDRH
+decodeLDRT = decodeLoadStore LDRT
+decodeLDRSB = decodeLoadStore' LDRSB
+decodeLDRSH = decodeLoadStore' LDRSH
+decodeSTR = decodeLoadStore STR
+decodeSTRB = decodeLoadStore STRB
+decodeSTRBT = decodeLoadStore STRBT
+decodeSTRH = decodeLoadStore' STRH
+decodeSTRT = decodeLoadStore STRT
 
 -- 32-bit immediate
 decodeShifterOperand x
@@ -172,3 +203,72 @@ decodeShifterOperand x
         shiftImm = pure $ (fromIntegral $ bitRange 7 11 x)
         shift = bitRange 5 6 x
         bit4 = x `testBit` 4
+
+-- Immediate offset/index
+decodeAddressingMode2 x
+  | not (x `testBit` 25) = AddrMode2_1 addrType uFlag rn offset
+  where pFlag = x `testBit` 24
+        wFlag = x `testBit` 21
+        uFlag = x `testBit` 23
+        rn = register (fromIntegral $ bitRange 16 19 x)
+        offset = pure $ bitRange 0 11 x
+        addrType = if (pFlag && wFlag)
+                   then PreIndex
+                   else if (pFlag && not wFlag)
+                   then NoIndex
+                   else PostIndex
+-- Register offset/index
+decodeAddressingMode2 x
+  | (x .&. 0x00000FF0 == 0) = AddrMode2_2 addrType uFlag rn rm
+  where pFlag = x `testBit` 24
+        wFlag = x `testBit` 21
+        uFlag = x `testBit` 23
+        rn = register (fromIntegral $ bitRange 16 19 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+        addrType = if (pFlag && wFlag)
+                   then PreIndex
+                   else if (pFlag && not wFlag)
+                   then NoIndex
+                   else PostIndex
+-- Scaled register offset/index
+decodeAddressingMode2 x
+  | (x .&. 0x00000FF0 /= 0) = AddrMode2_3 addrType uFlag rn rm immediate shift
+  where pFlag = x `testBit` 24
+        wFlag = x `testBit` 21
+        uFlag = x `testBit` 23
+        rn = register (fromIntegral $ bitRange 16 19 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+        immediate = pure (fromIntegral $ bitRange 7 11 x)
+        shift = fromIntegral $ bitRange 5 6 x
+        addrType = if (pFlag && wFlag)
+                   then PreIndex
+                   else if (pFlag && not wFlag)
+                   then NoIndex
+                   else PostIndex
+
+-- Immediate offset/index
+decodeAddressingMode3 x
+  | (x .&. 0x00400090) == 0x00400090 = AddrMode3_1 addrType uFlag rn immedH immedL
+  where pFlag = x `testBit` 24
+        wFlag = x `testBit` 21
+        uFlag = x `testBit` 23
+        rn = register (fromIntegral $ bitRange 16 19 x)
+        immedH = pure $ bitRange 8 11 x
+        immedL = pure $ bitRange 0 3 x
+        addrType = if (pFlag && wFlag)
+                   then PreIndex
+                   else if (pFlag && not wFlag)
+                   then NoIndex
+                   else PostIndex
+decodeAddressingMode3 x
+  | (x .&. 0x00400090) == 0x00000090 = AddrMode3_2 addrType uFlag rn rm
+  where pFlag = x `testBit` 24
+        wFlag = x `testBit` 21
+        uFlag = x `testBit` 23
+        rn = register (fromIntegral $ bitRange 16 19 x)
+        rm = register (fromIntegral $ bitRange 0 3 x)
+        addrType = if (pFlag && wFlag)
+                   then PreIndex
+                   else if (pFlag && not wFlag)
+                   then NoIndex
+                   else PostIndex
