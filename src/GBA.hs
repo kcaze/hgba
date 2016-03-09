@@ -1,23 +1,57 @@
 module GBA where
 
+import Data.Bits
 import Data.Word
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString as B
+import qualified Data.Map as Map
+import Numeric
+import System.IO
 
-data GBA = GBA { cpu :: CPU, mem :: Memory }
+import CPU
+import Execute
+import Imperative
+import Types
 
-newGBA :: GBA
-newGBA = GBA { cpu = c, mem = m } where
-  c = CPU {
-    r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0,
-    r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, sp = 0, lr = 0, pc = 0,
-    zflag = False, nflag = False, cflag = False, vflag = False,
-    mode = ARM
-  }
-  m = B.repeat 0
+pad8 s
+  | length s >= 8 = s
+  | otherwise = pad8 ('0':s)
+prompt :: CPU -> String
+prompt cpu = "0x" ++ pad8 (showHex (cpu_r15 cpu) "") ++ "> "
 
-loadROM :: GBA -> B.ByteString -> GBA
-loadROM gba rom = GBA { cpu = c', mem = m' } where
-  c' = c { pc = 0x08000000 }
-  c = cpu gba
-  m' = B.append m rom
-  m = B.take 0x08000000 (mem gba)
+main = do
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
+  bios <- B.readFile "GBA.ROM"
+  let cpu = run (loadBIOS bios) powerUp
+  loop cpu
+
+
+loop :: CPU -> IO ()
+loop cpu = do
+  putStr $ prompt cpu
+  c <- hGetChar stdin
+  case c of
+    'q' -> do putStrLn "Goodbye."
+              return ()
+    ' ' -> do putStr "\n"
+              loop (run step cpu)
+    'i' -> do putStrLn $ show cpu
+              loop cpu
+    'w' -> do viewMemoryWord cpu
+              loop cpu
+    _   -> do putStrLn $ "Commands:\n" ++
+                         "  'q' to quit\n" ++
+                         "  spacebar to step\n" ++
+                         "  'i' to view cpu\n" ++
+                         "  'w' to view a word in memory"
+              loop cpu
+
+viewMemoryWord :: CPU -> IO ()
+viewMemoryWord cpu = do
+  hSetBuffering stdin LineBuffering
+  hSetEcho stdin True
+  putStr "Enter memory address: "
+  address <- read <$> hGetLine stdin
+  putStrLn $ "  " ++ pad8 (showHex (get (memory32 (pure address)) cpu) "")
+  hSetEcho stdin False
+  hSetBuffering stdin NoBuffering

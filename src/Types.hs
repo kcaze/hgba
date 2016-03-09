@@ -1,191 +1,155 @@
-module Types where
+module Types ( Immediate, Register, Flag, Bit, Execute
+             , ProcessorMode(..), CPU(..)
+             , Instruction(..), RawInstruction(..)
+             , Shifter(..), AddressingModeType(..)
+             , AddressingMode2(..), AddressingMode3(..)
+             , AddressingMode4(..)
+             ) where
 
-import qualified Data.Map.Strict as Map
-import Prelude hiding (EQ, LT, GT)
-import Control.Applicative
 import Data.Word
-import Data.Bits
+import Imperative
+import Memory -- TODO: Decouple memory from CPU
 
-type Byte = Word8
-type Address = Word32
-type Register = Int
-type AddressSpace = Map.Map Address Byte
+-- Specializations of Value to CPU specific types
+type Immediate a = Value CPU a 
+type Register = Value CPU Word32
+type Flag = Value CPU Bool
+type Bit = Value CPU Word32
+type Execute = Value CPU CPU
 
-type Get a = CPU -> a
-type Set a = CPU -> a -> CPU
-
-data Instruction = Instruction ConditionCode RawInstruction
+-- CPU types
+data ProcessorMode = User
+                   | FIQ
+                   | IRQ
+                   | Supervisor
+                   | Abort
+                   | Undefined
+                   | System
   deriving (Eq, Show)
 
-(/+/) :: (Num a) => Get a -> Get a -> Get a
-(/+/) = liftA2 (+)
+data CPU = CPU {
+  cpu_r0        :: Word32,
+  cpu_r1        :: Word32,
+  cpu_r2        :: Word32,
+  cpu_r3        :: Word32,
+  cpu_r4        :: Word32,
+  cpu_r5        :: Word32,
+  cpu_r6        :: Word32,
+  cpu_r7        :: Word32,
+  cpu_r8        :: Word32,
+  cpu_r8_fiq    :: Word32,
+  cpu_r9        :: Word32,
+  cpu_r9_fiq    :: Word32,
+  cpu_r10       :: Word32,
+  cpu_r10_fiq   :: Word32,
+  cpu_r11       :: Word32,
+  cpu_r11_fiq   :: Word32,
+  cpu_r12       :: Word32,
+  cpu_r12_fiq   :: Word32,
+  cpu_r13       :: Word32,
+  cpu_r13_abt   :: Word32,
+  cpu_r13_fiq   :: Word32,
+  cpu_r13_irq   :: Word32,
+  cpu_r13_svc   :: Word32,
+  cpu_r13_und   :: Word32,
+  cpu_r14       :: Word32,
+  cpu_r14_abt   :: Word32,
+  cpu_r14_fiq   :: Word32,
+  cpu_r14_irq   :: Word32,
+  cpu_r14_svc   :: Word32,
+  cpu_r14_und   :: Word32,
+  cpu_r15       :: Word32,
+  cpu_cpsr      :: Word32,
+  cpu_spsr_abt  :: Word32,
+  cpu_spsr_fiq  :: Word32,
+  cpu_spsr_irq  :: Word32,
+  cpu_spsr_svc  :: Word32,
+  cpu_spsr_und  :: Word32,
+  cpu_memory    :: Memory,
+  cpu_fetch     :: Maybe Word32,
+  cpu_decode    :: Maybe Instruction
+} deriving (Eq)
 
-data ConditionCode = EQ | 
-                     NE |
-                     CS |
-                     HS |
-                     CC |
-                     LO |
-                     MI |
-                     PL |
-                     VS |
-                     VC |
-                     HI |
-                     LS |
-                     GE |
-                     LT |
-                     GT |
-                     LE |
-                     AL
-  deriving (Eq, Show)
+-- Instruction types.
 
-data RawInstruction = --  ADC Bool Register Register AddressMode1
-                      -- | ADD Bool Register Register AddressMode1
-                      -- | AND Bool Register Register AddressMode1
-                      -- | B Bool Word32
-                      -- | BIC Bool Register Register AddressMode1
-                      -- | BX Register
-                      -- | CDP
-                      -- | CMN Register AddressMode1
-                      -- | CMP Register AddressMode1
-                      -- | EOR Bool Register Register AddressMode1
-                      -- | LDC
-                      -- | LDM1
-                      -- | LDM2
-                      -- | LDM3
-                      -- | LDR
-                      -- | LDRB
-                      -- | LDRBT
-                      -- | LDRH
-                      -- | LDRSB
-                      -- | LDRSH
-                      -- | LDRT
-                      -- | MCR
-                      -- | MLA Bool Register Register Register Register
-                      -- | MOV Bool Register AddressMode1
-                      -- | MRC
-                      -- | MRS Bool Register
-                      -- | MSR Bool Word32 AddressMode1
-                      -- | MUL Bool Register Register Register
-                      -- | MVN Bool Register AddressMode1
-                      -- | ORR Bool Register Register AddressMode1
-                      -- | RSB Bool Register Register AddressMode1
-                      -- | RSC Bool Register Register AddressMode1
-                      -- | SBC Bool Register Register AddressMode1
-                      -- | SMLAL Bool Register Register Register Register
-                      -- | SMULL Bool Register Register Register Register
-                      -- | STC
-                      | STM1
-                      | STM2
-                      -- | STR
-                      -- | STRB
-                      -- | STRBT
-                      -- | STRH
-                      -- | STRT
-                      -- | SUB Bool Register Register AddressMode1
-                      | SWI
-                      | SWP
-                      | SWPB
-                      -- | TEQ Register AddressMode1
-                      -- | TST Register AddressMode1
-                      -- | UMLAL Bool Register Register Register Register
-                      -- | UMULL Bool Register Register Register Register
-  deriving (Eq, Show)
+data Instruction = Instruction Flag RawInstruction
+  deriving (Show, Eq)
 
-data AddressMode1 =   AddressMode1_1 Word32 Word32 -- #<rotate_imm> #<immed_8>
-                    | AddressMode1_2 Register -- <Rm>
-                    | AddressMode1_3 Register Word32 -- <Rm>, LSL #<shift_imm>
-                    | AddressMode1_4 Register Register -- <Rm>, LSL <Rs>
-                    | AddressMode1_5 Register Word32 -- <Rm>, LSR <#shift_imm>
-                    | AddressMode1_6 Register Register -- <Rm>, LSR <Rs>
-                    | AddressMode1_7 Register Word32 -- <Rm>, ASR <#shift_imm>
-                    | AddressMode1_8 Register Register -- <Rm>, ASR <Rs>
-                    | AddressMode1_9 Register Word32 -- <Rm>, ROR <#shift_imm>
-                    | AddressMode1_10 Register Register -- <Rm>, ROR <Rs>
-                    | AddressMode1_11 Register -- <Rm>, RRX
-  deriving (Eq, Show)
+data RawInstruction = ADC Bool Register Register Shifter
+                    | ADD Bool Register Register Shifter
+                    | AND Bool Register Register Shifter
+                    | B Bool (Immediate Word32)
+                    | BIC Bool Register Register Shifter
+                    | BX Register
+                    | CMN Register Shifter
+                    | CMP Register Shifter
+                    | EOR Bool Register Register Shifter
+                    | LDM1 AddressingMode4 [Register]
+                    | LDM2 AddressingMode4 [Register]
+                    | LDM3 AddressingMode4 [Register]
+                    | LDR Register AddressingMode2
+                    | LDRB Register AddressingMode2
+                    | LDRBT Register AddressingMode2
+                    | LDRH Register AddressingMode3
+                    | LDRT Register AddressingMode2
+                    | LDRSB Register AddressingMode3
+                    | LDRSH Register AddressingMode3
+                    | MLA Bool Register Register Register Register
+                    | MOV Bool Register Shifter
+                    | MRS Bool Register
+                    | MSR_immediate Bool (Immediate Word32) (Immediate Word32) (Immediate Int)
+                    | MSR_register Bool (Immediate Word32) Register
+                    | MUL Bool Register Register Register
+                    | MVN Bool Register Shifter
+                    | NOP
+                    | ORR Bool Register Register Shifter
+                    | RSB Bool Register Register Shifter
+                    | RSC Bool Register Register Shifter
+                    | SBC Bool Register Register Shifter
+                    | SMLAL Bool Register Register Register Register
+                    | SMULL Bool Register Register Register Register
+                    | STM1 AddressingMode4 [Register]
+                    | STM2 AddressingMode4 [Register]
+                    | STR Register AddressingMode2
+                    | STRB Register AddressingMode2
+                    | STRBT Register AddressingMode2
+                    | STRH Register AddressingMode3
+                    | STRT Register AddressingMode2
+                    | SUB Bool Register Register Shifter
+                    | TEQ Register Shifter
+                    | TST Register Shifter
+                    | UMLAL Bool Register Register Register Register
+                    | UMULL Bool Register Register Register Register
+  deriving (Show, Eq)
 
-data GeneralPurposeRegisters = GeneralPurposeRegisters
-  {
-    -- Unbanked registers.
-    r0 :: Word32,
-    r1 :: Word32,
-    r2 :: Word32,
-    r3 :: Word32,
-    r4 :: Word32,
-    r5 :: Word32,
-    r6 :: Word32,
-    r7 :: Word32,
+-- Addressing mode types
+data Shifter = I_operand (Immediate Word32) (Immediate Int)
+             | R_operand Register
+             | LSL_I_operand Register (Immediate Int)
+             | LSL_R_operand Register Register
+             | LSR_I_operand Register (Immediate Int)
+             | LSR_R_operand Register Register
+             | ASR_I_operand Register (Immediate Int)
+             | ASR_R_operand Register Register
+             | ROR_I_operand Register (Immediate Int)
+             | ROR_R_operand Register Register
+             | RRX_operand Register
+  deriving (Show, Eq)
 
-    -- Banked registers.
-    r8        :: Word32,
-    r8_fiq    :: Word32,
-    r9        :: Word32,
-    r9_fiq    :: Word32,
-    r10       :: Word32,
-    r10_fiq   :: Word32,
-    r11       :: Word32,
-    r11_fiq   :: Word32,
-    r12       :: Word32,
-    r12_fiq   :: Word32,
-    r13       :: Word32,
-    r13_svc   :: Word32,
-    r13_abt   :: Word32,
-    r13_und   :: Word32,
-    r13_irq   :: Word32,
-    r13_fiq   :: Word32,
-    r14       :: Word32,
-    r14_svc   :: Word32,
-    r14_abt   :: Word32,
-    r14_und   :: Word32,
-    r14_irq   :: Word32,
-    r14_fiq   :: Word32,
+data AddressingModeType = NoIndex | PreIndex | PostIndex
+  deriving (Show, Eq)
 
-    -- Program counter.
-    pc :: Word32
-  } deriving (Eq, Show)
+data AddressingMode2 = AddrMode2_1 AddressingModeType Bool Register (Immediate Word32)
+                     | AddrMode2_2 AddressingModeType Bool Register Register
+                     | AddrMode2_3 AddressingModeType Bool Register Register (Immediate Int) Int
+  deriving (Show, Eq)
 
-data StatusRegister = StatusRegister
-  {
-    conditionCodeFlags :: ConditionCodeFlags,
-    irqInterruptMask :: Bool,
-    fiqInterruptMask  :: Bool,
-    thumbStateFlag :: Bool,
-    processorMode :: ProcessorMode
-  } deriving (Eq, Show)
+data AddressingMode3 = AddrMode3_1 AddressingModeType Bool Register (Immediate Word32) (Immediate Word32)
+                     | AddrMode3_2 AddressingModeType Bool Register Register
+  deriving (Show, Eq)
 
-data ConditionCodeFlags = ConditionCodeFlags
-  {
-    n :: Bool,
-    z :: Bool,
-    c :: Bool,
-    v :: Bool
-  } deriving (Eq, Show)
-
-data ProcessorMode = User       |
-                     FIQ        |
-                     IRQ        |
-                     Supervisor |
-                     Abort      |
-                     Undefined  |
-                     System
-  deriving (Eq, Show)
-
-data Pipeline = Pipeline
-  {
-    decode :: Maybe Word32,
-    execute :: Maybe Instruction
-  } deriving (Eq, Show)
-
-data CPU = CPU
-  {
-    registers :: GeneralPurposeRegisters,
-    cpsr :: StatusRegister,
-    spsr_abt :: StatusRegister,
-    spsr_fiq :: StatusRegister,
-    spsr_irq :: StatusRegister,
-    spsr_svc :: StatusRegister,
-    spsr_und :: StatusRegister,
-    pipeline :: Pipeline,
-    memory :: AddressSpace
-  } deriving Show
+data AddressingMode4 = IA Bool Register
+                     | IB Bool Register
+                     | DA Bool Register
+                     | DB Bool Register
+  deriving (Show, Eq)

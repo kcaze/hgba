@@ -1,4 +1,4 @@
-module Bits where
+module Imperative where
 
 import Control.Applicative
 import Data.Bits
@@ -9,6 +9,7 @@ class Gettable t where
   get :: (t s a) -> (s -> a)
   fromFunction :: (s -> a) -> (t s a)
 
+-- Instances for functions
 instance Gettable (->) where
   get = id
   fromFunction = id
@@ -21,6 +22,51 @@ instance (Num a) => Num (s -> a) where
   negate = fmap negate
   fromInteger n = fromFunction (const . fromInteger $ n)
 
+-- Generic Value type and instances
+data Value s a = Immutable (s -> a)
+               | Immediate a
+               | Register Int (s -> a) (a -> s -> s)
+               | Mutable (s -> a) (a -> s -> s)
+
+set :: Value s a -> (Value s a -> Value s s)
+set (Mutable _ s) = \value -> fromFunction (\state -> s (get value state) state)
+set (Register _ _ s) = \value -> fromFunction (\state -> s (get value state) state)
+set _ = error "Attempting to set immutable value."
+
+instance Gettable (Value) where
+  get (Immutable g) = g
+  get (Immediate x) = const x
+  get (Register _ g _) = g
+  get (Mutable g _) = g
+  fromFunction = Immutable
+
+instance Functor (Value s) where
+  fmap f x = Immutable $ fmap f (get x)
+
+instance Applicative (Value s) where
+  pure x = Immediate x
+  x <*> y = Immutable (get x <*> get y)
+
+instance (Num a) => Num (Value s a) where
+  (+) = liftA2 (+)
+  (*) = liftA2 (*)
+  abs = fmap abs
+  signum = fmap signum
+  negate = fmap negate
+  fromInteger n = pure (fromInteger n)
+
+instance (Show a) => Show (Value s a) where
+  show (Immutable _) = "<Immutable>"
+  show (Immediate x) = "<Immediate " ++ show x ++ ">"
+  show (Register n _ _)  = "<Register " ++ show n ++ ">"
+  show (Mutable _ _)  = "<Mutable>"
+
+instance (Eq a) => Eq (Value s a) where
+  (Immediate x) == (Immediate y) = x == y
+  (Register n _ _) == (Register m _ _) = n == m
+  _ == _ = False
+
+-- Various lifted operators
 _if :: Gettable g => g s Bool -> g s a -> g s a -> g s a
 _if cond a b = fromFunction $ \s -> if get cond s then get a s else get b s
 

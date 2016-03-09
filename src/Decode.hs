@@ -1,11 +1,32 @@
 {-# LANGUAGE BinaryLiterals #-}
-module Decoder where
+module Decode where
 
 import Data.Bits
 import Data.Word
-import Bits
+
 import CPU
-import Instruction
+import Imperative
+import Types
+
+-- Condition codes
+eq = zFlag
+ne = _not zFlag
+cs = cFlag
+hs = cs
+cc = _not cFlag
+lo = cc
+mi = nFlag
+pl = _not nFlag
+vs = vFlag
+vc = _not vFlag
+hi = cs .&& ne
+ls = cc .&& eq
+ge = mi .== vs
+lt = mi ./= vs
+gt = ne .&& ge
+le = eq .|| lt
+al :: Flag
+al = pure True
 
 decodeCond :: Word32 -> Flag
 decodeCond 0x0 = eq
@@ -261,7 +282,6 @@ decodeAddressingMode2 x
                    else if (pFlag && not wFlag)
                    then NoIndex
                    else PostIndex
-
 -- Immediate offset/index
 decodeAddressingMode3 x
   | (x .&. 0x00400090) == 0x00400090 = AddrMode3_1 addrType uFlag rn immedH immedL

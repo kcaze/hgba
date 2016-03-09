@@ -1,11 +1,5 @@
 {-# LANGUAGE BinaryLiterals #-}
-module CPU ( ProcessorMode(..)
-           , Immediate
-           , Register
-           , Flag
-           , Execute
-           , set
-           , r0, r1, r2, r3, r4, r5, r6, r7, r8, r9
+module CPU ( r0, r1, r2, r3, r4, r5, r6, r7, r8, r9
            , r10, r11, r12, r13, r14, r15, sp, lr, pc
            , register
            , cpsr, spsr
@@ -13,132 +7,26 @@ module CPU ( ProcessorMode(..)
            , nBit, zBit, cBit, vBit, iBit, fBit, tBit
            , processorMode
            , memory8, memory16, memory32
-           , cpu_memory -- TODO: factor out the memory
            , instructionSize
-           , execute, fromBit, fromFlag
-           , reset, powerUp, loadBIOS
-           , CPU
+           , fromBit, fromFlag
            ) where
 
-import Control.Applicative
 import Data.Bits
-import qualified Data.ByteString as B
-import qualified Data.Map as Map
 import Numeric
 import Data.Word
-import Bits
+
+import Imperative
 import Memory
+import Types
 
 -- Utility functions
-execute :: Execute -> CPU -> CPU
 fromBit :: Bit -> Flag
 fromFlag :: Flag -> Bit
 
-execute = get
 fromBit (Immutable g) = Immutable ((/= 0) . g)
 fromBit (Mutable g s) = Mutable ((/= 0) . g) (s . (\x -> if x then 1 else 0))
 fromFlag (Immutable g) = Immutable ((\x -> if x then 1 else 0) . g)
 fromFlag (Mutable g s) = Mutable ((\x -> if x then 1 else 0) . g) (s . (/= 0))
-
--- Data types
-data Value s a = Immutable (s -> a)
-               | Immediate a
-               | Register Int (s -> a) (a -> s -> s)
-               | Mutable (s -> a) (a -> s -> s)
-
-set :: Value s a -> (Value s a -> Value s s)
-set (Mutable _ s) = \value -> fromFunction (\state -> s (get value state) state)
-set (Register _ _ s) = \value -> fromFunction (\state -> s (get value state) state)
-set _ = error "Attempting to set immutable value."
-
-instance Gettable (Value) where
-  get (Immutable g) = g
-  get (Immediate x) = const x
-  get (Register _ g _) = g
-  get (Mutable g _) = g
-  fromFunction = Immutable
-
-instance Functor (Value s) where
-  fmap f x = Immutable $ fmap f (get x)
-
-instance Applicative (Value s) where
-  pure x = Immediate x
-  x <*> y = Immutable (get x <*> get y)
-
-instance (Num a) => Num (Value s a) where
-  (+) = liftA2 (+)
-  (*) = liftA2 (*)
-  abs = fmap abs
-  signum = fmap signum
-  negate = fmap negate
-  fromInteger n = pure (fromInteger n)
-
-instance (Show a) => Show (Value s a) where
-  show (Immutable _) = "<Immutable>"
-  show (Immediate x) = "<Immediate " ++ show x ++ ">"
-  show (Register n _ _)  = "<Register " ++ show n ++ ">"
-  show (Mutable _ _)  = "<Mutable>"
-
-instance (Eq a) => Eq (Value s a) where
-  (Immediate x) == (Immediate y) = x == y
-  (Register n _ _) == (Register m _ _) = n == m
-  _ == _ = False
-
-type Immediate a = Value CPU a 
-type Register = Value CPU Word32
-type Flag = Value CPU Bool
-type Bit = Value CPU Word32
-type Execute = Value CPU CPU
-
-data ProcessorMode = User
-                   | FIQ
-                   | IRQ
-                   | Supervisor
-                   | Abort
-                   | Undefined
-                   | System
-  deriving (Eq, Show)
-
-data CPU = CPU {
-  cpu_r0        :: Word32,
-  cpu_r1        :: Word32,
-  cpu_r2        :: Word32,
-  cpu_r3        :: Word32,
-  cpu_r4        :: Word32,
-  cpu_r5        :: Word32,
-  cpu_r6        :: Word32,
-  cpu_r7        :: Word32,
-  cpu_r8        :: Word32,
-  cpu_r8_fiq    :: Word32,
-  cpu_r9        :: Word32,
-  cpu_r9_fiq    :: Word32,
-  cpu_r10       :: Word32,
-  cpu_r10_fiq   :: Word32,
-  cpu_r11       :: Word32,
-  cpu_r11_fiq   :: Word32,
-  cpu_r12       :: Word32,
-  cpu_r12_fiq   :: Word32,
-  cpu_r13       :: Word32,
-  cpu_r13_abt   :: Word32,
-  cpu_r13_fiq   :: Word32,
-  cpu_r13_irq   :: Word32,
-  cpu_r13_svc   :: Word32,
-  cpu_r13_und   :: Word32,
-  cpu_r14       :: Word32,
-  cpu_r14_abt   :: Word32,
-  cpu_r14_fiq   :: Word32,
-  cpu_r14_irq   :: Word32,
-  cpu_r14_svc   :: Word32,
-  cpu_r14_und   :: Word32,
-  cpu_r15       :: Word32,
-  cpu_cpsr      :: Word32,
-  cpu_spsr_abt  :: Word32,
-  cpu_spsr_fiq  :: Word32,
-  cpu_spsr_irq  :: Word32,
-  cpu_spsr_svc  :: Word32,
-  cpu_spsr_und  :: Word32,
-  cpu_memory    :: Memory
-} deriving (Eq)
 
 -- Pure CPU Getters
 type GetW = CPU -> Word32
@@ -329,74 +217,6 @@ memory32 address = Mutable (\c -> getMemory32 (get address c) c)
 instructionSize :: Immediate Word32
 instructionSize = _if tFlag % 2 ! 4
 
--- CPU initialization functions
-reset :: Execute
-reset = setsvc
-    .>> set processorMode (pure Supervisor)
-    .>> set iFlag (pure True)
-    .>> set fFlag (pure True)
-    .>> set pc 0
-  where setsvc = fromFunction (\cpu -> cpu { cpu_r14_svc = getR15 cpu, 
-                                             cpu_spsr_svc = getCPSR cpu })
-
-powerUp :: CPU
-powerUp = execute reset CPU {
-  cpu_r0        = 0,
-  cpu_r1        = 0,
-  cpu_r2        = 0,
-  cpu_r3        = 0,
-  cpu_r4        = 0,
-  cpu_r5        = 0,
-  cpu_r6        = 0,
-  cpu_r7        = 0,
-  cpu_r8        = 0,
-  cpu_r8_fiq    = 0,
-  cpu_r9        = 0,
-  cpu_r9_fiq    = 0,
-  cpu_r10       = 0,
-  cpu_r10_fiq   = 0,
-  cpu_r11       = 0,
-  cpu_r11_fiq   = 0,
-  cpu_r12       = 0,
-  cpu_r12_fiq   = 0,
-  cpu_r13       = 0,
-  cpu_r13_abt   = 0,
-  cpu_r13_fiq   = 0,
-  cpu_r13_irq   = 0,
-  cpu_r13_svc   = 0,
-  cpu_r13_und   = 0,
-  cpu_r14       = 0,
-  cpu_r14_abt   = 0,
-  cpu_r14_fiq   = 0,
-  cpu_r14_irq   = 0,
-  cpu_r14_svc   = 0,
-  cpu_r14_und   = 0,
-  cpu_r15       = 0,
-  cpu_cpsr      = 0,
-  cpu_spsr_abt  = 0,
-  cpu_spsr_fiq  = 0,
-  cpu_spsr_irq  = 0,
-  cpu_spsr_svc  = 0,
-  cpu_spsr_und  = 0,
-  cpu_memory = Memory {
-    systemROM = SystemROM Map.empty,
-    ewram = EWRAM Map.empty,
-    iwram = IWRAM Map.empty,
-    ioram = IORAM Map.empty,
-    paletteRAM = PaletteRAM Map.empty,
-    vram = VRAM Map.empty,
-    oam = OAM Map.empty
-  }
-}
-
-loadBIOS :: B.ByteString -> Execute
-loadBIOS bios = fromFunction $ f
-  where f cpu = cpu { cpu_memory = memory' }
-          where memory' = (cpu_memory cpu) { systemROM = biosROM }
-                biosROM = SystemROM . fst $
-                          B.foldl update (Map.empty, 0) bios
-                          where update (m, ii) b = (Map.insert ii (fromIntegral b) m, ii+1)
-
 -- Show instance for CPU
 instance Show CPU where
   show c = "CPU {\n"
@@ -426,6 +246,8 @@ instance Show CPU where
         ++ "           f = " ++ show (getFFlag c) ++ "\n"
         ++ "           t = " ++ show (getTFlag c) ++ "\n"
         ++ "        mode = " ++ show (getProcessorMode c) ++ "\n"
+        ++ "       fetch = " ++ show (cpu_fetch c) ++ "\n"
+        ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
         ++ "}"
 
 -- Detailed show.

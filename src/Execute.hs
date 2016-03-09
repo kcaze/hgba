@@ -1,157 +1,142 @@
 {-# LANGUAGE BinaryLiterals #-}
-module Instruction where
+module Execute where
 
 import Control.Applicative
 import Data.Bits
 import Data.Int
 import Data.Word
-import Bits
+import qualified Data.ByteString as B
+import qualified Data.Map as Map
+
 import CPU
+import Decode
+import Imperative
+import Memory
+import Types
 
-data Shifter = I_operand (Immediate Word32) (Immediate Int)
-             | R_operand Register
-             | LSL_I_operand Register (Immediate Int)
-             | LSL_R_operand Register Register
-             | LSR_I_operand Register (Immediate Int)
-             | LSR_R_operand Register Register
-             | ASR_I_operand Register (Immediate Int)
-             | ASR_R_operand Register Register
-             | ROR_I_operand Register (Immediate Int)
-             | ROR_R_operand Register Register
-             | RRX_operand Register
-  deriving (Show, Eq)
+-------------------
+-- CPU Execution --
+-------------------
+run :: Execute -> CPU -> CPU
+run = get
 
-data AddressingModeType = NoIndex | PreIndex | PostIndex
-  deriving (Show, Eq)
-data AddressingMode2 = AddrMode2_1 AddressingModeType Bool Register (Immediate Word32)
-                     | AddrMode2_2 AddressingModeType Bool Register Register
-                     | AddrMode2_3 AddressingModeType Bool Register Register (Immediate Int) Int
-  deriving (Show, Eq)
-data AddressingMode3 = AddrMode3_1 AddressingModeType Bool Register (Immediate Word32) (Immediate Word32)
-                     | AddrMode3_2 AddressingModeType Bool Register Register
-  deriving (Show, Eq)
-data AddressingMode4 = IA Bool Register
-                     | IB Bool Register
-                     | DA Bool Register
-                     | DB Bool Register
-  deriving (Show, Eq)
--- Evaluating an address mode results in an address and an execute.
--- The execute is necessary for base register write-back.
-addressMode2 :: AddressingMode2 -> (Immediate Word32, Execute)
-addressMode2 (AddrMode2_1 addrType uflag rn offset) = 
-  addressMode' addrType rn address
-  where address = if uflag then rn .+ offset else rn .- offset
-addressMode2 (AddrMode2_2 addrType uflag rn rm) =
-  addressMode' addrType rn address
-  where address = if uflag then rn .+ rm else rn .- rm
-addressMode2 (AddrMode2_3 addrType uflag rn rm immediate shift) =
-  addressMode' addrType rn address
-  where index = case shift of
-                  0b00 -> (rm .<! immediate)
-                  0b01 -> (_if (immediate .== 0) % 0 ! (rm .!> immediate))
-                  0b10 -> (_if (immediate .== 0) % (
-                            _if (rm .|?| 31) % 0xFFFFFFFF ! 0
-                          ) ! (rm .?> immediate))
-                  0b11 -> (_if (immediate .== 0) % (
-                            (cBit .<! 31) .| (rm .!> 1)
-                          ) ! (rm .@> immediate))
-        address = if uflag then rn .+ index else rn .- index
+step :: Execute
+step = execute
+   .>> decode
+   .>> fetch
+   .>> incrementPC
 
-addressMode3 :: AddressingMode3 -> (Immediate Word32, Execute)
-addressMode3 (AddrMode3_1 addrType uFlag rn immedH immedL) =
-  addressMode' addrType rn address
-  where offset = (immedH .<! 4) .| immedL
-        address = if uFlag then rn .+ offset else rn .- offset
-addressMode3 (AddrMode3_2 addrType uFlag rn rm) =
-  addressMode' addrType rn address
-  where address = if uFlag then rn .+ rm else rn .- rm
+execute :: Execute
+execute = fromFunction execute'
+  where i cpu = instruction <$> (cpu_decode cpu)
+        execute' cpu = (maybe cpu (`run` cpu) (i cpu)) {
+                         cpu_decode = Nothing
+                       }
 
-addressMode' :: AddressingModeType -> Register -> Immediate Word32 ->
-                 (Immediate Word32, Execute)
-addressMode' NoIndex _ address = (address, _id)
-addressMode' PreIndex rn address = (address, set rn address)
-addressMode' PostIndex rn address = (rn, set rn address)
+incrementPC :: Execute
+incrementPC = set r15 (r15 .+ instructionSize)
 
--- Evaluating an address mode results in a start address and an execute.
--- The execute is necessary for base register write-back.
-addressMode4 :: AddressingMode4 -> [Register] -> (Immediate Word32, Execute)
-addressMode4 (IA wflag rn) registerList = (startAddress, writeBack)
-  where bitsSet = pure (fromIntegral $ length registerList)
-        startAddress = rn 
-        writeBack = if wflag then set rn (rn .+ (bitsSet .* 4)) else _id
-addressMode4 (IB wflag rn) registerList = (startAddress, writeBack)
-  where bitsSet = pure (fromIntegral $ length registerList)
-        startAddress = rn .+ 4
-        writeBack = if wflag then set rn (rn .+ (bitsSet .* 4)) else _id
-addressMode4 (DA wflag rn) registerList = (startAddress, writeBack)
-  where bitsSet = pure (fromIntegral $ length registerList)
-        startAddress = rn .- (bitsSet .* 4) .+ 4
-        writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
-addressMode4 (DB wflag rn) registerList = (startAddress, writeBack)
-  where bitsSet = pure (fromIntegral $ length registerList)
-        startAddress = rn .- (bitsSet .* 4)
-        writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
+flush :: Execute
+flush = fromFunction (\c -> c { cpu_fetch = Nothing, cpu_decode = Nothing })
 
-data Instruction = Instruction Flag RawInstruction
-  deriving (Show, Eq)
-data RawInstruction = ADC Bool Register Register Shifter
-                    | ADD Bool Register Register Shifter
-                    | AND Bool Register Register Shifter
-                    | B Bool (Immediate Word32)
-                    | BIC Bool Register Register Shifter
-                    | BX Register
-                    | CMN Register Shifter
-                    | CMP Register Shifter
-                    | EOR Bool Register Register Shifter
-                    | LDM1 AddressingMode4 [Register]
-                    | LDM2 AddressingMode4 [Register]
-                    | LDM3 AddressingMode4 [Register]
-                    | LDR Register AddressingMode2
-                    | LDRB Register AddressingMode2
-                    | LDRBT Register AddressingMode2
-                    | LDRH Register AddressingMode3
-                    | LDRT Register AddressingMode2
-                    | LDRSB Register AddressingMode3
-                    | LDRSH Register AddressingMode3
-                    | MLA Bool Register Register Register Register
-                    | MOV Bool Register Shifter
-                    | MRS Bool Register
-                    | MSR_immediate Bool (Immediate Word32) (Immediate Word32) (Immediate Int)
-                    | MSR_register Bool (Immediate Word32) Register
-                    | MUL Bool Register Register Register
-                    | MVN Bool Register Shifter
-                    | NOP
-                    | ORR Bool Register Register Shifter
-                    | RSB Bool Register Register Shifter
-                    | RSC Bool Register Register Shifter
-                    | SBC Bool Register Register Shifter
-                    | SMLAL Bool Register Register Register Register
-                    | SMULL Bool Register Register Register Register
-                    | STM1 AddressingMode4 [Register]
-                    | STM2 AddressingMode4 [Register]
-                    | STR Register AddressingMode2
-                    | STRB Register AddressingMode2
-                    | STRBT Register AddressingMode2
-                    | STRH Register AddressingMode3
-                    | STRT Register AddressingMode2
-                    | SUB Bool Register Register Shifter
-                    | TEQ Register Shifter
-                    | TST Register Shifter
-                    | UMLAL Bool Register Register Register Register
-                    | UMULL Bool Register Register Register Register
-  deriving (Show, Eq)
+decode :: Execute
+decode = fromFunction decode'
+  where decode' cpu = cpu {
+          cpu_decode = maybe Nothing decodeInstruction (cpu_fetch cpu),
+          cpu_fetch  = Nothing
+        }
+
+fetch :: Execute
+fetch = fromFunction fetch'
+  where fetch' cpu = cpu {
+          cpu_fetch = Just $ get (memory32 r15) cpu
+        }
+
+reset :: Execute
+reset = setsvc
+    .>> set processorMode (pure Supervisor)
+    .>> set iFlag (pure True)
+    .>> set fFlag (pure True)
+    .>> set pc 0
+  where setsvc = fromFunction (\cpu -> cpu { cpu_r14_svc = cpu_r15 cpu, 
+                                             cpu_spsr_svc = cpu_cpsr cpu })
+
+powerUp :: CPU
+powerUp = get reset CPU {
+  cpu_r0        = 0,
+  cpu_r1        = 0,
+  cpu_r2        = 0,
+  cpu_r3        = 0,
+  cpu_r4        = 0,
+  cpu_r5        = 0,
+  cpu_r6        = 0,
+  cpu_r7        = 0,
+  cpu_r8        = 0,
+  cpu_r8_fiq    = 0,
+  cpu_r9        = 0,
+  cpu_r9_fiq    = 0,
+  cpu_r10       = 0,
+  cpu_r10_fiq   = 0,
+  cpu_r11       = 0,
+  cpu_r11_fiq   = 0,
+  cpu_r12       = 0,
+  cpu_r12_fiq   = 0,
+  cpu_r13       = 0,
+  cpu_r13_abt   = 0,
+  cpu_r13_fiq   = 0,
+  cpu_r13_irq   = 0,
+  cpu_r13_svc   = 0,
+  cpu_r13_und   = 0,
+  cpu_r14       = 0,
+  cpu_r14_abt   = 0,
+  cpu_r14_fiq   = 0,
+  cpu_r14_irq   = 0,
+  cpu_r14_svc   = 0,
+  cpu_r14_und   = 0,
+  cpu_r15       = 0,
+  cpu_cpsr      = 0,
+  cpu_spsr_abt  = 0,
+  cpu_spsr_fiq  = 0,
+  cpu_spsr_irq  = 0,
+  cpu_spsr_svc  = 0,
+  cpu_spsr_und  = 0,
+  cpu_memory = Memory {
+    systemROM = SystemROM Map.empty,
+    ewram = EWRAM Map.empty,
+    iwram = IWRAM Map.empty,
+    ioram = IORAM Map.empty,
+    paletteRAM = PaletteRAM Map.empty,
+    vram = VRAM Map.empty,
+    oam = OAM Map.empty
+  },
+  cpu_fetch = Nothing,
+  cpu_decode = Nothing
+}
+
+-- I'm sure this could be better written.
+loadBIOS :: B.ByteString -> Execute
+loadBIOS bios = fromFunction $ f
+  where f cpu = cpu { cpu_memory = memory' }
+          where memory' = (cpu_memory cpu) { systemROM = biosROM }
+                biosROM = SystemROM . fst $
+                          B.foldl update (Map.empty, 0) bios
+                          where update (m, ii) b = (Map.insert ii (fromIntegral b) m, ii+1)
+
+------------------
+-- Instructions --
+------------------
+
 instruction :: Instruction -> Execute
 instruction (Instruction c r) = _if c % raw r ! _id
 
 raw :: RawInstruction -> Execute
 
-------------------------
--- Branch instructions--
-------------------------
 raw (B lFlag immed) = (_if (pure lFlag) % set lr (pc .- instructionSize) ! _id)
                   .>> (set pc (pc + ((signExtend 24 30 .$ immed) .<! 2)))
+                  .>> flush -- Branch instructions flush pipeline
 raw (BX rm) = set tFlag (rm .|?| 0)
           .>> set pc (rm .& 0xFFFFFFFE)
+          .>> flush
 
 ----------------------------------
 -- Data-processing instructions --
@@ -318,7 +303,7 @@ raw (MSR_immediate rFlag fieldMask immed8 rotateImm) =
   where operand = immed8 .@> (rotateImm .* 2)
         unallocMask = 0x0FFFFF00
         userMask = 0xF0000000
-        privMask = 0x0000000F
+        privMask = 0x000000DF -- ARM reference manual is incorrect
         stateMask = 0x00000020
         byteMask = (_if (_testBit fieldMask 0) % 0x000000FF ! 0) .|
                    (_if (_testBit fieldMask 1) % 0x0000FF00 ! 0) .|
@@ -337,7 +322,7 @@ raw (MSR_register rFlag fieldMask rm) =
   where operand = rm
         unallocMask = 0x0FFFFF00
         userMask = 0xF0000000
-        privMask = 0x0000000F
+        privMask = 0x000000DF -- ARM reference manual is incorrect
         stateMask = 0x00000020
         byteMask = (_if (_testBit fieldMask 0) % 0x000000FF ! 0) .|
                    (_if (_testBit fieldMask 1) % 0x0000FF00 ! 0) .|
@@ -414,27 +399,9 @@ raw (STM2 am registers) = fst $ foldl for (_id, 0) registers
 
 raw NOP = _id
   
--- Condition codes
-eq = zFlag
-ne = _not zFlag
-cs = cFlag
-hs = cs
-cc = _not cFlag
-lo = cc
-mi = nFlag
-pl = _not nFlag
-vs = vFlag
-vc = _not vFlag
-hi = cs .&& ne
-ls = cc .&& eq
-ge = mi .== vs
-lt = mi ./= vs
-gt = ne .&& ge
-le = eq .|| lt
-al :: Flag
-al = pure True
-
--- Addressing Mode 1: Data-processing operands
+----------------------
+-- Addressing Modes --
+----------------------
 shifter :: Shifter -> Immediate (Word32, Bool)
 shifterOperand :: Shifter -> Immediate Word32
 shifterCarry :: Shifter -> Immediate Bool
@@ -518,3 +485,60 @@ dataProcess sFlag rd rn s op nVal zVal cVal vVal =
           .>>  set cFlag cVal
           .>>  set vFlag vVal)
        ) else _id)
+
+-- Evaluating an address mode results in an address and an execute.
+-- The execute is necessary for base register write-back.
+addressMode2 :: AddressingMode2 -> (Immediate Word32, Execute)
+addressMode2 (AddrMode2_1 addrType uflag rn offset) = 
+  addressMode' addrType rn address
+  where address = if uflag then rn .+ offset else rn .- offset
+addressMode2 (AddrMode2_2 addrType uflag rn rm) =
+  addressMode' addrType rn address
+  where address = if uflag then rn .+ rm else rn .- rm
+addressMode2 (AddrMode2_3 addrType uflag rn rm immediate shift) =
+  addressMode' addrType rn address
+  where index = case shift of
+                  0b00 -> (rm .<! immediate)
+                  0b01 -> (_if (immediate .== 0) % 0 ! (rm .!> immediate))
+                  0b10 -> (_if (immediate .== 0) % (
+                            _if (rm .|?| 31) % 0xFFFFFFFF ! 0
+                          ) ! (rm .?> immediate))
+                  0b11 -> (_if (immediate .== 0) % (
+                            (cBit .<! 31) .| (rm .!> 1)
+                          ) ! (rm .@> immediate))
+        address = if uflag then rn .+ index else rn .- index
+
+addressMode3 :: AddressingMode3 -> (Immediate Word32, Execute)
+addressMode3 (AddrMode3_1 addrType uFlag rn immedH immedL) =
+  addressMode' addrType rn address
+  where offset = (immedH .<! 4) .| immedL
+        address = if uFlag then rn .+ offset else rn .- offset
+addressMode3 (AddrMode3_2 addrType uFlag rn rm) =
+  addressMode' addrType rn address
+  where address = if uFlag then rn .+ rm else rn .- rm
+
+addressMode' :: AddressingModeType -> Register -> Immediate Word32 ->
+                 (Immediate Word32, Execute)
+addressMode' NoIndex _ address = (address, _id)
+addressMode' PreIndex rn address = (address, set rn address)
+addressMode' PostIndex rn address = (rn, set rn address)
+
+-- Evaluating an address mode results in a start address and an execute.
+-- The execute is necessary for base register write-back.
+addressMode4 :: AddressingMode4 -> [Register] -> (Immediate Word32, Execute)
+addressMode4 (IA wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn 
+        writeBack = if wflag then set rn (rn .+ (bitsSet .* 4)) else _id
+addressMode4 (IB wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn .+ 4
+        writeBack = if wflag then set rn (rn .+ (bitsSet .* 4)) else _id
+addressMode4 (DA wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn .- (bitsSet .* 4) .+ 4
+        writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
+addressMode4 (DB wflag rn) registerList = (startAddress, writeBack)
+  where bitsSet = pure (fromIntegral $ length registerList)
+        startAddress = rn .- (bitsSet .* 4)
+        writeBack = if wflag then set rn (rn .- (bitsSet .* 4)) else _id
