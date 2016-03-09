@@ -120,6 +120,7 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | MSR_register Bool (Immediate Word32) Register
                     | MUL Bool Register Register Register
                     | MVN Bool Register Shifter
+                    | NOP
                     | ORR Bool Register Register Shifter
                     | RSB Bool Register Register Shifter
                     | RSC Bool Register Register Shifter
@@ -147,7 +148,7 @@ raw :: RawInstruction -> Execute
 ------------------------
 -- Branch instructions--
 ------------------------
-raw (B lFlag immed) = (_if (pure lFlag) % set lr (pc - instructionSize) ! _id)
+raw (B lFlag immed) = (_if (pure lFlag) % set lr (pc .- instructionSize) ! _id)
                   .>> (set pc (pc + ((signExtend 24 30 .$ immed) .<! 2)))
 raw (BX rm) = set tFlag (rm .|?| 0)
           .>> set pc (rm .& 0xFFFFFFFE)
@@ -380,36 +381,38 @@ raw (STRH rd am) = set (memory16 address) (bitRange 0 15 .$ rd)
                .>> writeBack
   where (address, writeBack) = addressMode3 am
 -- Load and store multiple instructions
-raw (LDM1 am registers) = fst $ foldr for (_id, 0) registers
+raw (LDM1 am registers) = fst $ foldl for (_id, 0) registers
   where (address, writeBack) = addressMode4 am registers
-        for r (e, ii) = (e', ii .+ 4)
+        for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set r (memory32 $ address .+ (4 .* ii))
 -- TODO: LDM2 is incorrect. It needs to load to user registers
 -- which is currently impossible with how the CPU is set up.
-raw (LDM2 am registers) = fst $ foldr for (_id, 0) registers
+raw (LDM2 am registers) = fst $ foldl for (_id, 0) registers
   where (address, writeBack) = addressMode4 am registers
-        for r (e, ii) = (e', ii .+ 4)
+        for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set r (memory32 $ address .+ (4 .* ii))
-raw (LDM3 am registers) = (fst $ foldr for (_id, 0) registers)
+raw (LDM3 am registers) = (fst $ foldl for (_id, 0) registers)
                          .>> set cpsr spsr
   where (address, writeBack) = addressMode4 am registers
-        for r (e, ii) = (e', ii .+ 4)
+        for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set r (memory32 $ address .+ (4 .* ii))
-raw (STM1 am registers) = fst $ foldr for (_id, 0) registers
+raw (STM1 am registers) = fst $ foldl for (_id, 0) registers
   where (address, writeBack) = addressMode4 am registers
-        for r (e, ii) = (e', ii .+ 4)
+        for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set (memory32 $ address .+ (4 .* ii)) r
 -- TODO: STM2 is incorrect. It needs to store to user registers
 -- which is currently impossible with how the CPU is set up.
-raw (STM2 am registers) = fst $ foldr for (_id, 0) registers
+raw (STM2 am registers) = fst $ foldl for (_id, 0) registers
   where (address, writeBack) = addressMode4 am registers
-        for r (e, ii) = (e', ii .+ 4)
+        for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set (memory32 $ address .+ (4 .* ii)) r
+
+raw NOP = _id
   
 -- Condition codes
 eq = zFlag

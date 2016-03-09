@@ -13,14 +13,18 @@ module CPU ( ProcessorMode(..)
            , nBit, zBit, cBit, vBit, iBit, fBit, tBit
            , processorMode
            , memory8, memory16, memory32
+           , cpu_memory -- TODO: factor out the memory
            , instructionSize
            , execute, fromBit, fromFlag
-           , reset, powerUp
+           , reset, powerUp, loadBIOS
+           , CPU
            ) where
 
 import Control.Applicative
 import Data.Bits
+import qualified Data.ByteString as B
 import qualified Data.Map as Map
+import Numeric
 import Data.Word
 import Bits
 import Memory
@@ -44,6 +48,7 @@ data Value s a = Immutable (s -> a)
 
 set :: Value s a -> (Value s a -> Value s s)
 set (Mutable _ s) = \value -> fromFunction (\state -> s (get value state) state)
+set (Register _ _ s) = \value -> fromFunction (\state -> s (get value state) state)
 set _ = error "Attempting to set immutable value."
 
 instance Gettable (Value) where
@@ -133,7 +138,7 @@ data CPU = CPU {
   cpu_spsr_svc  :: Word32,
   cpu_spsr_und  :: Word32,
   cpu_memory    :: Memory
-} deriving (Eq, Show)
+} deriving (Eq)
 
 -- Pure CPU Getters
 type GetW = CPU -> Word32
@@ -175,7 +180,7 @@ getSPSR = _if (getProcessorMode .== pure Abort)      % cpu_spsr_abt
         ! _if (getProcessorMode .== pure IRQ)        % cpu_spsr_irq
         ! _if (getProcessorMode .== pure Supervisor) % cpu_spsr_svc
         ! _if (getProcessorMode .== pure Undefined)  % cpu_spsr_und
-        ! error "Attempt to get SPSR in user or system mode." 
+        ! 0 --error "Attempt to get SPSR in user or system mode." 
 
 [getNFlag, getZFlag, getCFlag, getVFlag, getIFlag, getFFlag, getTFlag] = map getBit bits
   where bits = [31, 30, 29, 28, 7, 6, 5]
@@ -320,11 +325,11 @@ memory16 address = Mutable (\c -> getMemory16 (get address c) c)
 memory32 address = Mutable (\c -> getMemory32 (get address c) c)
                           (\w c -> setMemory32 (get address c) w c) 
 
--- Immutable CPU values (i.e. impure functions
+-- Immutable CPU values (i.e. impure functions)
 instructionSize :: Immediate Word32
-instructionSize = _if tFlag % 4 ! 8
+instructionSize = _if tFlag % 2 ! 4
 
--- CPU constructor
+-- CPU initialization functions
 reset :: Execute
 reset = setsvc
     .>> set processorMode (pure Supervisor)
@@ -383,3 +388,91 @@ powerUp = execute reset CPU {
     oam = OAM Map.empty
   }
 }
+
+loadBIOS :: B.ByteString -> Execute
+loadBIOS bios = fromFunction $ f
+  where f cpu = cpu { cpu_memory = memory' }
+          where memory' = (cpu_memory cpu) { systemROM = biosROM }
+                biosROM = SystemROM . fst $
+                          B.foldl update (Map.empty, 0) bios
+                          where update (m, ii) b = (Map.insert ii (fromIntegral b) m, ii+1)
+
+-- Show instance for CPU
+instance Show CPU where
+  show c = "CPU {\n"
+        ++ "          r0 = " ++ showHex (getR0 c) "\n"
+        ++ "          r1 = " ++ showHex (getR1 c) "\n"
+        ++ "          r2 = " ++ showHex (getR2 c) "\n"
+        ++ "          r3 = " ++ showHex (getR3 c) "\n"
+        ++ "          r4 = " ++ showHex (getR4 c) "\n"
+        ++ "          r5 = " ++ showHex (getR5 c) "\n"
+        ++ "          r6 = " ++ showHex (getR6 c) "\n"
+        ++ "          r7 = " ++ showHex (getR7 c) "\n"
+        ++ "          r8 = " ++ showHex (getR8 c) "\n"
+        ++ "          r9 = " ++ showHex (getR9 c) "\n"
+        ++ "         r10 = " ++ showHex (getR10 c) "\n"
+        ++ "         r11 = " ++ showHex (getR11 c) "\n"
+        ++ "         r12 = " ++ showHex (getR12 c) "\n"
+        ++ "         r13 = " ++ showHex (getR13 c) "\n"
+        ++ "         r14 = " ++ showHex (getR14 c) "\n"
+        ++ "         r15 = " ++ showHex (getR15 c) "\n"
+        ++ "        cpsr = " ++ showHex (getCPSR c) "\n"
+        ++ "        spsr = " ++ showHex (getSPSR c) "\n"
+        ++ "           n = " ++ show (getNFlag c) ++ "\n"
+        ++ "           z = " ++ show (getZFlag c) ++ "\n"
+        ++ "           c = " ++ show (getCFlag c) ++ "\n"
+        ++ "           v = " ++ show (getVFlag c) ++ "\n"
+        ++ "           i = " ++ show (getIFlag c) ++ "\n"
+        ++ "           f = " ++ show (getFFlag c) ++ "\n"
+        ++ "           t = " ++ show (getTFlag c) ++ "\n"
+        ++ "        mode = " ++ show (getProcessorMode c) ++ "\n"
+        ++ "}"
+
+-- Detailed show.
+show' c = "CPU {\n"
+        ++ "          r0 = " ++ showHex (cpu_r0 c) "\n"
+        ++ "          r1 = " ++ showHex (cpu_r1 c) "\n"
+        ++ "          r2 = " ++ showHex (cpu_r2 c) "\n"
+        ++ "          r3 = " ++ showHex (cpu_r3 c) "\n"
+        ++ "          r4 = " ++ showHex (cpu_r4 c) "\n"
+        ++ "          r5 = " ++ showHex (cpu_r5 c) "\n"
+        ++ "          r6 = " ++ showHex (cpu_r6 c) "\n"
+        ++ "          r7 = " ++ showHex (cpu_r7 c) "\n"
+        ++ "          r8 = " ++ showHex (cpu_r8 c) "\n"
+        ++ "          r9 = " ++ showHex (cpu_r9 c) "\n"
+        ++ "         r10 = " ++ showHex (cpu_r10 c) "\n"
+        ++ "         r11 = " ++ showHex (cpu_r11 c) "\n"
+        ++ "         r12 = " ++ showHex (cpu_r12 c) "\n"
+        ++ "         r13 = " ++ showHex (cpu_r13 c) "\n"
+        ++ "         r14 = " ++ showHex (cpu_r14 c) "\n"
+        ++ "         r15 = " ++ showHex (cpu_r15 c) "\n"
+        ++ "           n = " ++ show (getNFlag c) ++ "\n"
+        ++ "           z = " ++ show (getZFlag c) ++ "\n"
+        ++ "           c = " ++ show (getCFlag c) ++ "\n"
+        ++ "           v = " ++ show (getVFlag c) ++ "\n"
+        ++ "           i = " ++ show (getIFlag c) ++ "\n"
+        ++ "           f = " ++ show (getFFlag c) ++ "\n"
+        ++ "           t = " ++ show (getTFlag c) ++ "\n"
+        ++ "        mode = " ++ show (getProcessorMode c) ++ "\n"
+        ++ "      r8_fiq = " ++ showHex (cpu_r8_fiq c) "\n"
+        ++ "      r9_fiq = " ++ showHex (cpu_r9_fiq c) "\n"
+        ++ "     r10_fiq = " ++ showHex (cpu_r10_fiq c) "\n"
+        ++ "     r11_fiq = " ++ showHex (cpu_r11_fiq c) "\n"
+        ++ "     r12_fiq = " ++ showHex (cpu_r12_fiq c) "\n"
+        ++ "     r13_abt = " ++ showHex (cpu_r13_abt c) "\n"
+        ++ "     r13_fiq = " ++ showHex (cpu_r13_fiq c) "\n"
+        ++ "     r13_irq = " ++ showHex (cpu_r13_irq c) "\n"
+        ++ "     r13_svc = " ++ showHex (cpu_r13_svc c) "\n"
+        ++ "     r13_und = " ++ showHex (cpu_r13_und c) "\n"
+        ++ "     r14_abt = " ++ showHex (cpu_r14_abt c) "\n"
+        ++ "     r14_fiq = " ++ showHex (cpu_r14_fiq c) "\n"
+        ++ "     r14_irq = " ++ showHex (cpu_r14_irq c) "\n"
+        ++ "     r14_svc = " ++ showHex (cpu_r14_svc c) "\n"
+        ++ "     r14_und = " ++ showHex (cpu_r14_und c) "\n"
+        ++ "        cpsr = " ++ showHex (cpu_cpsr c) "\n"
+        ++ "    spsr_abt = " ++ showHex (cpu_spsr_abt c) "\n"
+        ++ "    spsr_fiq = " ++ showHex (cpu_spsr_fiq c) "\n"
+        ++ "    spsr_irq = " ++ showHex (cpu_spsr_irq c) "\n"
+        ++ "    spsr_svc = " ++ showHex (cpu_spsr_svc c) "\n"
+        ++ "    spsr_und = " ++ showHex (cpu_spsr_und c) "\n"
+        ++ "}"
