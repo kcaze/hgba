@@ -79,6 +79,7 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | ADD Bool Register Register Shifter
                     | AND Bool Register Register Shifter
                     | B Bool (Immediate Word32)
+                    | BL Bool (Immediate Word32) -- THUMB only
                     | BIC Bool Register Register Shifter
                     | BX Register
                     | CMN Register Shifter
@@ -88,6 +89,7 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | LDM2 AddressingMode4 [Register]
                     | LDM3 AddressingMode4 [Register]
                     | LDR Register AddressingMode2
+                    | LDR3 Register (Immediate Word32) -- THUMB only
                     | LDRB Register AddressingMode2
                     | LDRBT Register AddressingMode2
                     | LDRH Register AddressingMode3

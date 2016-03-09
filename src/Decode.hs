@@ -28,6 +28,9 @@ le = eq .|| lt
 al :: Flag
 al = pure True
 
+-----------------
+-- ARM decoder --
+-----------------
 decodeCond :: Word32 -> Flag
 decodeCond 0x0 = eq
 decodeCond 0x1 = ne
@@ -46,8 +49,8 @@ decodeCond 0xD = le
 decodeCond 0xE = al
 decodeCond 0xF = error "Decoded undefined condition code."
 
-decodeInstruction :: Word32 -> Maybe Instruction
-decodeInstruction x
+decodeARM :: Word32 -> Maybe Instruction
+decodeARM x
   | (x .&. 0x0E000000) == 0x0A000000 = d decodeB
   | (x .&. 0x0FFFFFF0) == 0x012FFF10 = d decodeBX
   | (x .&. 0x0DE00000) == 0x00000000 && isData x = d decodeAND
@@ -317,3 +320,201 @@ decodeAddressingMode4 x = (case mode of
   where mode = bitRange 23 24 x
         wFlag = x `testBit` 21
         rn = register (fromIntegral $ bitRange 16 19 x)
+
+
+-------------------
+-- THUMB decoder --
+-------------------
+decodeTHUMB :: Word32 -> Maybe Instruction
+decodeTHUMB x
+  | x .&. 0xFFC0 == 0x4140 = decodeADC' x
+  | x .&. 0xFE00 == 0x1C00 = decodeADD1' x
+  | x .&. 0xF800 == 0x3000 = decodeADD2' x
+  | x .&. 0xFE00 == 0x1800 = decodeADD3' x
+  | x .&. 0xFF00 == 0x4400 = decodeADD4' x
+  | x .&. 0xF800 == 0xA000 = decodeADD5' x
+  | x .&. 0xF800 == 0xA800 = decodeADD6' x
+  | x .&. 0xFF80 == 0xB000 = decodeADD7' x
+  | x .&. 0xFFC0 == 0x4000 = decodeAND' x
+  | x .&. 0xF800 == 0x1000 = decodeASR1' x
+  | x .&. 0xFFC0 == 0x4100 = decodeASR2' x
+  | x .&. 0xF000 == 0xD000 = decodeB1' x
+  | x .&. 0xF800 == 0xE000 = decodeB2' x
+  | x .&. 0xFFC0 == 0x4380 = decodeBIC' x
+  | x .&. 0xF800 == 0xF000 = decodeBLhi' x
+  | x .&. 0xF800 == 0xF800 = decodeBLlo' x
+  | x .&. 0xFF87 == 0x4700 = decodeBX' x
+  | x .&. 0xFFC0 == 0x42C0 = decodeCMN' x
+  | x .&. 0xF800 == 0x2800 = decodeCMP1' x
+  | x .&. 0xFFC0 == 0x4280 = decodeCMP2' x
+  | x .&. 0xFF00 == 0x4500 = decodeCMP3' x
+  | x .&. 0xFFC0 == 0x4040 = decodeEOR' x
+  | x .&. 0xF800 == 0xC800 = decodeLDMIA' x
+  | x .&. 0xF800 == 0x6800 = decodeLDR1' x
+  | x .&. 0xFE00 == 0x5800 = decodeLDR2' x
+  | x .&. 0xF800 == 0x4800 = decodeLDR3' x
+  | x .&. 0xF800 == 0x9800 = decodeLDR4' x
+  | x .&. 0xF800 == 0x7800 = decodeLDRB1' x
+  | x .&. 0xFE00 == 0x5C00 = decodeLDRB2' x
+  | x .&. 0xF800 == 0x8800 = decodeLDRH1' x
+  | x .&. 0xFE00 == 0x5A00 = decodeLDRH2' x
+
+decodeADC' x = decodeARM x'
+  where x' = 0xE0B00000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = bitRange 3 5 x
+        rm = bitRange 0 2 x
+
+decodeADD1' x = decodeARM x'
+  where x' = 0xE2900000 .|. (rn <! 16) .|. (rd <! 12) .|. immed3
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        immed3 = bitRange 6 8 x
+
+decodeADD2' x = decodeARM x'
+  where x' = 0xE2900000 .|. (rd <! 16) .|. (rd <! 12) .|. immed8
+        rd = bitRange 8 10 x
+        immed8 = bitRange 0 7 x
+
+decodeADD3' x = decodeARM x'
+  where x' = 0xE0900000 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rm = bitRange 6 8 x
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+
+decodeADD4' x = decodeARM x'
+  where x' = 0xE08 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = (bitRange 0 2 x) .|. (bitRange 7 7 x <! 3)
+        rm = (bitRange 3 5 x) .|. (bitRange 6 6 x <! 3)
+
+decodeADD5' x = decodeARM x'
+  where x' = 0xE28F0F00 .|. (rd <! 12) .|. immed8
+        rd = bitRange 8 10 x
+        immed8 = bitRange 0 7 x
+
+decodeADD6' x = decodeARM x'
+  where x' = 0xE28D0F00 .|. (rd <! 12) .|. immed8
+        rd = bitRange 8 10 x
+        immed8 = bitRange 0 7 x
+
+decodeADD7' x = decodeARM x'
+  where x' = 0xE28DDF00 .|. immed7
+        immed7 = bitRange 0 6 x
+
+decodeAND' x = decodeARM x'
+  where x' = 0xE0100000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeASR1' x = decodeARM x'
+  where x' = 0xE1B00040 .|. (rd <! 12) .|. (immed5 <! 7) .|. rm
+        rd = bitRange 0 2 x
+        immed5 = bitRange 6 10 x
+        rm = bitRange 3 5 x
+
+decodeASR2' x = decodeARM x'
+  where x' = 0xE1B00050 .|. (rd <! 12) .|. (rs <! 8) .|. rd
+        rd = bitRange 0 2 x
+        rs = bitRange 3 5 x
+
+decodeB1' x = decodeARM x'
+  where x' = 0x0A000000 .|. cond .|. immed24
+        cond = bitRange 8 11 x
+        immed24 = signExtend 8 24 (bitRange 0 7 x)
+
+decodeB2' x = decodeARM x'
+  where x' = 0xEA000000 .|. immed24
+        immed24 = signExtend 11 24 (bitRange 0 10 x)
+
+decodeBIC' x = decodeARM x'
+  where x' = 0xE1D00000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeBLhi' x = Just $ Instruction al (BL True offset)
+  where offset = pure $ bitRange 0 10 x
+
+decodeBLlo' x = Just $ Instruction al (BL False offset)
+  where offset = pure $ bitRange 0 10 x
+
+decodeBX' x = decodeARM x'
+  where x' = 0xE12FFF10 .|. rm
+        rm = bitRange 3 6 x
+
+decodeCMN' x = decodeARM x'
+  where x' = 0xE1700000 .|. (rn <! 16) .|. rm
+        rn = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeCMP1' x = decodeARM x'
+  where x' = 0xE3500000 .|. (rn <! 16) .|. immed
+        rn = bitRange 8 10 x
+        immed = bitRange 0 7 x
+
+decodeCMP2' x = decodeARM x'
+  where x' = 0xE1500000 .|. (rn <! 16) .|. rm
+        rn = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeCMP3' x = decodeARM x'
+  where x' = 0xE1500000 .|. (rn <! 16) .|. rm
+        rn = bitRange 0 2 x .|. bitRange 7 7 x
+        rm = bitRange 3 5 x .|. bitRange 6 6 x
+
+decodeEOR' x = decodeARM x'
+  where x' = 0xE0300000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeLDMIA' x = decodeARM x'
+  where x' = 0xE8900000 .|. wBit .|. rn .|. registers
+        wBit = if registers `testBit` (fromIntegral rn) then (bit 21) else 0
+        rn = bitRange 8 10 x
+        registers = bitRange 0 7 x
+
+decodeLDR1' x = decodeARM x'
+  where x' = 0xE5900000 .|. (rn <! 16) .|. (rd <! 12) .|. (immed <! 2)
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        immed = bitRange 6 10 x
+
+decodeLDR2' x = decodeARM x'
+  where x' = 0xE7900000 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeLDR3' x = Just $ Instruction al (LDR3 rd immed)
+  where rd = register $ fromIntegral (bitRange 8 10 x)
+        immed = pure $ bitRange 0 7 x
+
+decodeLDR4' x = decodeARM x'
+  where x' = 0xE59D0000 .|. (rd <! 12) .|. (immed <! 2)
+        rd = bitRange 8 10 x
+        immed = bitRange 0 7 x
+
+decodeLDRB1' x = decodeARM x'
+  where x' = 0xE5D00000 .|. (rn <! 16) .|. (rd <! 12) .|. immed
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        immed = bitRange 6 10 x
+
+decodeLDRB2' x = decodeARM x'
+  where x' = 0xE7D00000 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeLDRH1' x = decodeARM x'
+  where x' = 0xE1D000B0 .|. (rn <! 16) .|. (rd <! 12) .|. (i1 <! 8) .|. (i2 <! 1)
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        i1 = bitRange 9 10 x
+        i2 = bitRange 6 8 x
+
+decodeLDRH2' x = decodeARM x'
+  where x' = 0xE19000B0 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+--decodeLDR

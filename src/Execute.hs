@@ -42,9 +42,10 @@ flush = fromFunction (\c -> c { cpu_fetch = Nothing, cpu_decode = Nothing })
 decode :: Execute
 decode = fromFunction decode'
   where decode' cpu = cpu {
-          cpu_decode = maybe Nothing decodeInstruction (cpu_fetch cpu),
+          cpu_decode = maybe Nothing (decodeInstruction cpu) (cpu_fetch cpu),
           cpu_fetch  = Nothing
         }
+        decodeInstruction cpu = if (get tFlag cpu) then decodeARM else decodeTHUMB
 
 fetch :: Execute
 fetch = fromFunction fetch'
@@ -132,11 +133,17 @@ instruction (Instruction c r) = _if c % raw r ! _id
 raw :: RawInstruction -> Execute
 
 raw (B lFlag immed) = (_if (pure lFlag) % set lr (pc .- instructionSize) ! _id)
-                  .>> (set pc (pc + ((signExtend 24 30 .$ immed) .<! 2)))
-                  .>> flush -- Branch instructions flush pipeline
+                  .>> (set pc (pc + ((signExtend 24 30 .$ immed) .<! shift)))
+  where shift = _if tFlag % 1 ! 2 -- So that we can use the same instruction for both
+                                  -- ARM and THUMB states.
+-- THUMB only BL
+-- hFlag == 1 => hi
+raw (BL hFlag offset) = 
+  if hFlag then set lr ((pc .+ (signExtend 11 32 .$ offset)) .<! 12)
+  else (set pc (lr .+ (offset .<! 1)) .>>
+        set lr ((pc .- instructionSize) .| 1))
 raw (BX rm) = set tFlag (rm .|?| 0)
           .>> set pc (rm .& 0xFFFFFFFE)
-          .>> flush
 
 ----------------------------------
 -- Data-processing instructions --
@@ -329,9 +336,11 @@ raw (MSR_register rFlag fieldMask rm) =
                    (_if (_testBit fieldMask 2) % 0x00FF0000 ! 0) .|
                    (_if (_testBit fieldMask 3) % 0xFF000000 ! 0)
 -- Load and store instructions
-raw (LDR rd am) = set rd (memory32 address)
+raw (LDR rd am) = set rd ((memory32 address) .@> (fromIntegral . bitRange 0 1 <$> address))
               .>> writeBack
   where (address, writeBack) = addressMode2 am
+raw (LDR3 rd immed) = set rd (memory32 address)
+  where address = (pc .& 0xFFFFFFFC) .+ (immed .* 4)
 raw (LDRT rd am) = set rd (memory32 address)
                .>> writeBack
   where (address, writeBack) = addressMode2 am

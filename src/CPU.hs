@@ -130,7 +130,12 @@ setR14 x c = case mode of Abort      -> c { cpu_r14_abt = x }
                           Undefined  -> c { cpu_r14_und = x }
                           _          -> c { cpu_r14 = x }
   where mode = getProcessorMode c
-setR15 x c = c { cpu_r15 = x }
+-- Setting r15 flushes pipeline
+setR15 x c = c {
+               cpu_r15 = x,
+               cpu_fetch = Nothing,
+               cpu_decode = Nothing
+             }
 
 setCPSR x c = c { cpu_cpsr = x }
 
