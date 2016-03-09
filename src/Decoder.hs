@@ -66,6 +66,11 @@ decodeInstruction x
   | (x .&. 0x0C500000) == 0x04400000 = d decodeSTRB
   | (x .&. 0x0D700000) == 0x04600000 = d decodeSTRBT -- TODO
   | (x .&. 0x0E1000F0) == 0x000000B0 = d decodeSTRH
+  | (x .&. 0x0E500000) == 0x08100000 = d decodeLDM1
+  | (x .&. 0x0E708000) == 0x08500000 = d decodeLDM2
+  | (x .&. 0x0E508000) == 0x08508000 = d decodeLDM3
+  | (x .&. 0x0E500000) == 0x08000000 = d decodeSTM1
+  | (x .&. 0x0E700000) == 0x08400000 = d decodeSTM2
   | otherwise = Nothing
   where condition = decodeCond (x `shiftR` 0x1C)
         d :: (Word32 -> Maybe RawInstruction) -> Maybe Instruction
@@ -181,6 +186,17 @@ decodeSTRB = decodeLoadStore STRB
 decodeSTRBT = decodeLoadStore STRBT
 decodeSTRH = decodeLoadStore' STRH
 decodeSTRT = decodeLoadStore STRT
+-- Load and store multiple instructions
+decodeLoadStoreMultiple f x = Just $ f am registers
+  where am = decodeAddressingMode4 x
+        registers = foldr (\n rs -> if x `testBit` n
+                                    then ((register n):rs)
+                                    else rs) [] [0..15]
+decodeLDM1 = decodeLoadStoreMultiple LDM1
+decodeLDM2 = decodeLoadStoreMultiple LDM2
+decodeLDM3 = decodeLoadStoreMultiple LDM3
+decodeSTM1 = decodeLoadStoreMultiple STM1
+decodeSTM2 = decodeLoadStoreMultiple STM2
 
 -- 32-bit immediate
 decodeShifterOperand x
@@ -272,3 +288,12 @@ decodeAddressingMode3 x
                    else if (pFlag && not wFlag)
                    then NoIndex
                    else PostIndex
+
+decodeAddressingMode4 x = (case mode of
+                                0b01 -> IA
+                                0b11 -> IB
+                                0b00 -> DA
+                                0b10 -> DB) wFlag rn 
+  where mode = bitRange 23 24 x
+        wFlag = x `testBit` 21
+        rn = register (fromIntegral $ bitRange 16 19 x)
