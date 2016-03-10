@@ -253,6 +253,7 @@ instance Show CPU where
         ++ "        mode = " ++ show (getProcessorMode c) ++ "\n"
         ++ "       fetch = " ++ show (cpu_fetch c) ++ "\n"
         ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
+        ++ "      cycles = " ++ show (cpu_cycles c) ++ "\n"
         ++ "}"
 
 -- Detailed show.
@@ -302,4 +303,7 @@ show' c = "CPU {\n"
         ++ "    spsr_irq = " ++ showHex (cpu_spsr_irq c) "\n"
         ++ "    spsr_svc = " ++ showHex (cpu_spsr_svc c) "\n"
         ++ "    spsr_und = " ++ showHex (cpu_spsr_und c) "\n"
+        ++ "       fetch = " ++ show (cpu_fetch c) ++ "\n"
+        ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
+        ++ "      cycles = " ++ show (cpu_cycles c) ++ "\n"
         ++ "}"

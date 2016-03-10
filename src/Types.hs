@@ -67,7 +67,8 @@ data CPU = CPU {
   cpu_spsr_und  :: Word32,
   cpu_memory    :: Memory,
   cpu_fetch     :: Maybe Word32,
-  cpu_decode    :: Maybe Instruction
+  cpu_decode    :: Maybe Instruction,
+  cpu_cycles    :: Word32
 } deriving (Eq)
 
 -- Instruction types.

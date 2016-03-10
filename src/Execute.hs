@@ -25,6 +25,7 @@ step = execute
    .>> decode
    .>> fetch
    .>> incrementPC
+   .>> (fromFunction $ \c -> c { cpu_cycles = (cpu_cycles c) + 1 })
 
 execute :: Execute
 execute = fromFunction execute'
@@ -115,7 +116,8 @@ powerUp = get reset CPU {
     oam = OAM Map.empty
   },
   cpu_fetch = Nothing,
-  cpu_decode = Nothing
+  cpu_decode = Nothing,
+  cpu_cycles = 0
 }
 
 -- I'm sure this could be better written.
@@ -158,56 +160,64 @@ raw (BX rm) = set tFlag (rm .|?| 0)
 -- Data-processing instructions --
 ----------------------------------
 -- Shared logic across instructions is abstracted in dataProcess.
-raw (AND s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (AND s rd rn shift) = do
+  c <- shifterCarry shift -- Force evaluation of c
+  dataProcess s rd rn shift op n z (pure c) v
   where op = (.&)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = shifterCarry shift
         v = vFlag
-raw (EOR s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (EOR s rd rn shift) = do
+  c <- shifterCarry shift
+  dataProcess s rd rn shift op n z (pure c) v
   where op = (.^)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = shifterCarry shift
         v = vFlag
-raw (SUB s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (SUB s rd rn shift) = do
+  c <- _not $ _borrowFrom rn (shifterOperand shift)
+  v <- _overflowFromSub rn (shifterOperand shift)
+  dataProcess s rd rn shift op n z (pure c) (pure v)
   where op = (.-)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = _not $ _borrowFrom rn (shifterOperand shift)
-        v = _overflowFromSub rn (shifterOperand shift)
-raw (RSB s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (RSB s rd rn shift) = do
+  c <- _not $ _borrowFrom (shifterOperand shift) rn
+  v <- _overflowFromSub (shifterOperand shift) rn
+  dataProcess s rd rn shift op n z (pure c) (pure v)
   where op = flip (.-)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = _not $ _borrowFrom (shifterOperand shift) rn
-        v = _overflowFromSub (shifterOperand shift) rn
-raw (ADD s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (ADD s rd rn shift) = do
+  c <- _carryFrom rn (shifterOperand shift)
+  v <- _overflowFromAdd rn (shifterOperand shift)
+  dataProcess s rd rn shift op n z (pure c) (pure v)
   where op = (.+)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = _carryFrom rn (shifterOperand shift)
-        v = _overflowFromAdd rn (shifterOperand shift)
-raw (ADC s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (ADC s rd rn shift) = do
+  c <-  _carryFrom rn (shifterOperand shift .+ cBit)
+  v <- _overflowFromAdd rn (shifterOperand shift .+ cBit)
+  dataProcess s rd rn shift op n z (pure c) (pure v)
   where op = \r operand -> (r .+ operand .+ cBit)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = _carryFrom rn (shifterOperand shift .+ cBit)
-        v = _overflowFromAdd rn (shifterOperand shift .+ cBit)
-raw (SBC s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (SBC s rd rn shift) = do
+  c <- _borrowFrom rn (shifterOperand shift .+ cBit')
+  v <- _overflowFromSub rn (shifterOperand shift .+ cBit')
+  dataProcess s rd rn shift op n z (pure c) (pure v)
   where cBit' = fromFlag $ _not cFlag
         op = \r operand -> (r .- (operand .+ cBit'))
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = _borrowFrom rn (shifterOperand shift .+ cBit')
-        v = _overflowFromSub rn (shifterOperand shift .+ cBit')
-raw (RSC s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (RSC s rd rn shift) = do
+  c <- _borrowFrom (shifterOperand shift) (rn .+ cBit')
+  v <- _overflowFromSub (shifterOperand shift) (rn .+ cBit')
+  dataProcess s rd rn shift op n z (pure c) (pure v)
   where cBit' = fromFlag $ _not cFlag
         op = \r operand -> (operand .- (r .+ cBit'))
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = _borrowFrom (shifterOperand shift) (rn .+ cBit')
-        v = _overflowFromSub (shifterOperand shift) (rn .+ cBit')
 raw (TST rn shift) = set nFlag (aluOut .|?| 31)
                  .>> set zFlag (aluOut .== 0)
                  .>> set cFlag (shifterCarry shift)
@@ -226,29 +236,33 @@ raw (CMN rn shift) = set nFlag (aluOut .|?| 31)
                  .>> set cFlag (_not $ _carryFrom rn (shifterOperand shift))
                  .>> set vFlag (_overflowFromAdd rn (shifterOperand shift))
   where aluOut = rn .+ (shifterOperand shift)
-raw (ORR s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (ORR s rd rn shift) = do
+  c <- shifterCarry shift
+  dataProcess s rd rn shift op n z (pure c) v
   where op = (.|)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = shifterCarry shift
         v = vFlag
-raw (MOV s rd shift) = dataProcess s rd rd shift op n z c v
-  where op = \r operand -> operand
-        n = (rd .|?| 31)
-        z = (rd .== 0)
-        c = shifterCarry shift
-        v = vFlag
-raw (BIC s rd rn shift) = dataProcess s rd rn shift op n z c v
+raw (MOV s rd shift) = do
+  c <- shifterCarry shift -- Force evaluation of c.
+  dataProcess s rd rd shift op n z (pure c) v
+  where op = \r operand -> operand;
+         n = (rd .|?| 31);
+         z = (rd .== 0);
+         v = vFlag;
+raw (BIC s rd rn shift) = do
+  c <- shifterCarry shift
+  dataProcess s rd rn shift op n z (pure c) v
   where op = \r operand -> r .& (complement .$ operand)
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = shifterCarry shift
         v = vFlag
-raw (MVN s rd shift) = dataProcess s rd rd shift op n z c v
+raw (MVN s rd shift) = do
+  c <- shifterCarry shift
+  dataProcess s rd rd shift op n z (pure c) v
   where op = \r operand -> complement .$ operand
         n = (rd .|?| 31)
         z = (rd .== 0)
-        c = shifterCarry shift
         v = vFlag
 -- Multiply instructions 
 raw (MUL sFlag rd rm rs) = set rd (rm .* rs)
@@ -499,8 +513,6 @@ dataProcess :: Bool -> Register -> Register -> Shifter
             -> Flag -> Flag -> Flag -> Flag
             -> Execute
 dataProcess sFlag rd rn s op nVal zVal cVal vVal =
-  -- TODO: Is this incorrect for rn = rd?
-  -- I.e. should the flag updates use the previous value of rn?
   set rd (rn `op` shifterOperand s)
   .>> (if sFlag then (
           if   (rd == r15)
