@@ -79,6 +79,8 @@ data RawInstruction = ADC Bool Register Register Shifter
                     | ADD Bool Register Register Shifter
                     | AND Bool Register Register Shifter
                     | B Bool (Immediate Word32)
+                    | B1 (Immediate Word32) -- THUMB only
+                    | B2 (Immediate Word32) -- THUMB only
                     | BL Bool (Immediate Word32) -- THUMB only
                     | BIC Bool Register Register Shifter
                     | BX Register

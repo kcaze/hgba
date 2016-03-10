@@ -338,6 +338,7 @@ decodeTHUMB x
   | x .&. 0xFFC0 == 0x4000 = decodeAND' x
   | x .&. 0xF800 == 0x1000 = decodeASR1' x
   | x .&. 0xFFC0 == 0x4100 = decodeASR2' x
+  | x .&. 0xFF00 == 0xDF00 = decodeSWI' x
   | x .&. 0xF000 == 0xD000 = decodeB1' x
   | x .&. 0xF800 == 0xE000 = decodeB2' x
   | x .&. 0xFFC0 == 0x4380 = decodeBIC' x
@@ -358,6 +359,36 @@ decodeTHUMB x
   | x .&. 0xFE00 == 0x5C00 = decodeLDRB2' x
   | x .&. 0xF800 == 0x8800 = decodeLDRH1' x
   | x .&. 0xFE00 == 0x5A00 = decodeLDRH2' x
+  | x .&. 0xFE00 == 0x5600 = decodeLDRSB' x
+  | x .&. 0xFE00 == 0x5E00 = decodeLDRSH' x
+  | x .&. 0xF800 == 0x0000 = decodeLSL1' x
+  | x .&. 0xFFC0 == 0x4080 = decodeLSL2' x
+  | x .&. 0xF800 == 0x0800 = decodeLSR1' x
+  | x .&. 0xFFC0 == 0x40A0 = decodeLSR2' x
+  | x .&. 0xF800 == 0x2000 = decodeMOV1' x
+  | x .&. 0xFFC0 == 0x1C00 = decodeMOV2' x
+  | x .&. 0xFF00 == 0x4600 = decodeMOV3' x
+  | x .&. 0xFFC0 == 0x4340 = decodeMUL' x
+  | x .&. 0xFFC0 == 0x43C0 = decodeMVN' x
+  | x .&. 0xFFC0 == 0x4240 = decodeNEG' x
+  | x .&. 0xFFC0 == 0x4300 = decodeORR' x
+  | x .&. 0xFE00 == 0xBC00 = decodePOP' x
+  | x .&. 0xFE00 == 0xB400 = decodePUSH' x
+  | x .&. 0xFFC0 == 0x41C0 = decodeROR' x
+  | x .&. 0xFFC0 == 0x4180 = decodeSBC' x
+  | x .&. 0xF800 == 0xC000 = decodeSTMIA' x
+  | x .&. 0xF800 == 0x6000 = decodeSTR1' x
+  | x .&. 0xFE00 == 0x5000 = decodeSTR2' x
+  | x .&. 0xF800 == 0x9000 = decodeSTR3' x
+  | x .&. 0xF800 == 0x7000 = decodeSTRB1' x
+  | x .&. 0xFE00 == 0x5400 = decodeSTRB2' x
+  | x .&. 0xF800 == 0x8000 = decodeSTRH1' x
+  | x .&. 0xFE00 == 0x5200 = decodeSTRH2' x
+  | x .&. 0xFE00 == 0x1E00 = decodeSUB1' x
+  | x .&. 0xF800 == 0x3800 = decodeSUB2' x
+  | x .&. 0xFE00 == 0x1A00 = decodeSUB3' x
+  | x .&. 0xFF80 == 0xB080 = decodeSUB4' x
+  | x .&. 0xFFC0 == 0x4200 = decodeTST' x
 
 decodeADC' x = decodeARM x'
   where x' = 0xE0B00000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
@@ -416,14 +447,12 @@ decodeASR2' x = decodeARM x'
         rd = bitRange 0 2 x
         rs = bitRange 3 5 x
 
-decodeB1' x = decodeARM x'
-  where x' = 0x0A000000 .|. cond .|. immed24
-        cond = bitRange 8 11 x
-        immed24 = signExtend 8 24 (bitRange 0 7 x)
+decodeB1' x = Just $ Instruction cond (B1 immed)
+  where cond = decodeCond $ bitRange 8 11 x
+        immed = pure $ bitRange 0 7 x
 
-decodeB2' x = decodeARM x'
-  where x' = 0xEA000000 .|. immed24
-        immed24 = signExtend 11 24 (bitRange 0 10 x)
+decodeB2' x = Just $ Instruction al (B2 immed)
+  where immed = pure $ bitRange 0 10 x
 
 decodeBIC' x = decodeARM x'
   where x' = 0xE1D00000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
@@ -457,8 +486,8 @@ decodeCMP2' x = decodeARM x'
 
 decodeCMP3' x = decodeARM x'
   where x' = 0xE1500000 .|. (rn <! 16) .|. rm
-        rn = bitRange 0 2 x .|. bitRange 7 7 x
-        rm = bitRange 3 5 x .|. bitRange 6 6 x
+        rn = bitRange 0 2 x .|. (bitRange 7 7 x <! 3)
+        rm = bitRange 3 5 x .|. (bitRange 6 6 x <! 3)
 
 decodeEOR' x = decodeARM x'
   where x' = 0xE0300000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
@@ -517,4 +546,168 @@ decodeLDRH2' x = decodeARM x'
         rd = bitRange 0 2 x
         rm = bitRange 6 8 x
 
---decodeLDR
+decodeLDRSB' x = decodeARM x'
+  where x' = 0xE19000D0 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeLDRSH' x = decodeARM x'
+  where x' = 0xE19000F0 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeLSL1' x = decodeARM x'
+  where x' = 0xE1B00000 .|. (rd <! 12) .|. (immed <! 7) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+        immed = bitRange 6 10 x
+
+decodeLSL2' x = decodeARM x'
+  where x' = 0xE1B00010 .|. (rd <! 12) .|. (rs <! 8) .|. rd
+        rd = bitRange 0 2 x
+        rs = bitRange 3 5 x
+
+decodeLSR1' x = decodeARM x'
+  where x' = 0xE1B00020 .|. (rd <! 12) .|. (immed <! 7) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+        immed = bitRange 6 10 x
+
+decodeLSR2' x = decodeARM x'
+  where x' = 0xE1B00030 .|. (rd <! 12) .|. (rs <! 8) .|. rd
+        rd = bitRange 0 2 x
+        rs = bitRange 3 5 x
+
+decodeMOV1' x = decodeARM x'
+  where x' = 0xE3B00000 .|. (rd <! 12) .|. immed
+        rd = bitRange 8 10 x
+        immed = bitRange 0 7 x
+
+decodeMOV2' x = decodeARM x'
+  where x' = 0xE2900000 .|. (rn <! 16) .|. (rd <! 12)
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+
+decodeMOV3' x = decodeARM x'
+  where x' = 0xE1A00000 .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x .|. (bitRange 7 7 x <! 3)
+        rm = bitRange 3 5 x .|. (bitRange 6 6 x <! 3)
+
+decodeMUL' x = decodeARM x'
+  where x' = 0xE0100090 .|. (rd <! 16) .|. (rd <! 8) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeMVN' x = decodeARM x'
+  where x' = 0xE1F00000 .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeNEG' x = decodeARM x'
+  where x' = 0xE2700000 .|. (rm <! 16) .|. (rd <! 12)
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeORR' x = decodeARM x'
+  where x' = 0xE1900000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodePOP' x = decodeARM x'
+  where x' = 0xE1BD0000 .|. (rBit <! 15) .|. registers
+        rBit = bitRange 8 8 x
+        registers = bitRange 0 7 x
+
+decodePUSH' x = decodeARM x'
+  where x' = 0xE92D0000 .|. (rBit <! 14) .|. registers
+        rBit = bitRange 8 8 x
+        registers = bitRange 0 7 x
+
+decodeROR' x = decodeARM x'
+  where x' = 0xE1B00070 .|. (rd <! 12) .|. (rs <! 8) .|. rd
+        rd = bitRange 0 2 x
+        rs = bitRange 3 5 x
+
+decodeSBC' x = decodeARM x'
+  where x' = 0xE0D00000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
+        rd = bitRange 0 2 x
+        rm = bitRange 3 5 x
+
+decodeSTMIA' x = decodeARM x'
+  where x' = 0xE8A00000 .|. (rn <! 16) .|. registers
+        rn = bitRange 8 10 x
+        registers = bitRange 0 7 x
+
+decodeSTR1' x = decodeARM x'
+  where x' = 0xE5800000 .|. (rn <! 16) .|. (rd <! 12) .|. (immed <! 2)
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        immed = bitRange 6 10 x
+
+decodeSTR2' x = decodeARM x'
+  where x' = 0xE7800000 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeSTR3' x = decodeARM x'
+  where x' = 0xE58D0000 .|. (rd <! 12) .|. (immed <! 2)
+        rd = bitRange 8 10 x
+        immed = bitRange 0 7 x
+
+decodeSTRB1' x = decodeARM x'
+  where x' = 0xE5C00000 .|. (rn <! 16) .|. (rd <! 12) .|. immed
+        rd = bitRange 0 2 x
+        rn = bitRange 3 5 x
+        immed = bitRange 6 10 x
+
+decodeSTRB2' x = decodeARM x'
+  where x' = 0xE7C00000 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeSTRH1' x = decodeARM x'
+  where x' = 0xE1C000B0 .|. (rn <! 16) .|. (rd <! 12) .|. (i1 <! 8) .|. (i2 <! 1)
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        i1 = bitRange 6 8 x
+        i2 = bitRange 9 10 x
+
+decodeSTRH2' x = decodeARM x'
+  where x' = 0xE18000B0 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeSUB1' x = decodeARM x'
+  where x' = 0xE2500000 .|. (rn <! 16) .|. (rd <! 12) .|. immed
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        immed = bitRange 6 8 x
+
+decodeSUB2' x = decodeARM x'
+  where x' = 0xE2500000 .|. (rd <! 16) .|. (rd <! 12) .|. immed
+        rd = bitRange 8 10 x
+        immed = bitRange 0 7 x
+
+decodeSUB3' x = decodeARM x'
+  where x' = 0xE0500000 .|. (rn <! 16) .|. (rd <! 12) .|. rm
+        rn = bitRange 3 5 x
+        rd = bitRange 0 2 x
+        rm = bitRange 6 8 x
+
+decodeSUB4' x = decodeARM x'
+  where x' = 0xE24DDF00 .|. immed
+        immed = bitRange 0 6 x
+
+decodeSWI' x = decodeARM x'
+  where x' = 0xEF000000 .|. immed
+        immed = bitRange 0 7 x
+
+decodeTST' x = decodeARM x'
+  where x' = 0xE1100000 .|. (rn <! 16) .|. rm
+        rn = bitRange 0 2 x
+        rm = bitRange 3 5 x

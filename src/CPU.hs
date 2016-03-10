@@ -75,15 +75,15 @@ getSPSR = _if (getProcessorMode .== pure Abort)      % cpu_spsr_abt
         getBit b c = bitRange b b (getCPSR c) /= 0
 
 getProcessorMode :: CPU -> ProcessorMode
-getProcessorMode = _if (mode .== 0b01000) % pure User
-                 ! _if (mode .== 0b10001) % pure FIQ
-                 ! _if (mode .== 0b10010) % pure IRQ
-                 ! _if (mode .== 0b10011) % pure Supervisor
-                 ! _if (mode .== 0b10111) % pure Abort
-                 ! _if (mode .== 0b11011) % pure Undefined
-                 ! _if (mode .== 0b11111) % pure System
-                 ! error "CPU has invalid processor mode."
-  where mode = getCPSR .& 0x1F
+getProcessorMode cpu = if (mode == 0b01000) then User
+                  else if (mode == 0b10001) then FIQ
+                  else if (mode == 0b10010) then IRQ
+                  else if (mode == 0b10011) then Supervisor
+                  else if (mode == 0b10111) then Abort
+                  else if (mode == 0b11011) then Undefined
+                  else if (mode == 0b11111) then System
+                  else error $ "CPU has invalid processor mode 0x" ++ showHex mode ""
+  where mode = get cpsr cpu .&. 0x1F
 
 getMemory8 :: Address -> CPU -> Word32
 getMemory16 :: Address -> CPU -> Word32

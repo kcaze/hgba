@@ -34,7 +34,10 @@ execute = fromFunction execute'
                        }
 
 incrementPC :: Execute
-incrementPC = set r15 (r15 .+ instructionSize)
+incrementPC = fromFunction increment
+  where increment c = c {
+          cpu_r15 = (cpu_r15 c) + (get instructionSize c)
+        }
 
 flush :: Execute
 flush = fromFunction (\c -> c { cpu_fetch = Nothing, cpu_decode = Nothing })
@@ -45,13 +48,14 @@ decode = fromFunction decode'
           cpu_decode = maybe Nothing (decodeInstruction cpu) (cpu_fetch cpu),
           cpu_fetch  = Nothing
         }
-        decodeInstruction cpu = if (get tFlag cpu) then decodeARM else decodeTHUMB
+        decodeInstruction cpu = if (get tFlag cpu) then decodeTHUMB else decodeARM
 
 fetch :: Execute
 fetch = fromFunction fetch'
   where fetch' cpu = cpu {
-          cpu_fetch = Just $ get (memory32 r15) cpu
+          cpu_fetch = Just $ get (memory cpu $ r15) cpu
         }
+        memory cpu = if (get tFlag cpu) then memory16 else memory32
 
 reset :: Execute
 reset = setsvc
@@ -133,15 +137,20 @@ instruction (Instruction c r) = _if c % raw r ! _id
 raw :: RawInstruction -> Execute
 
 raw (B lFlag immed) = (_if (pure lFlag) % set lr (pc .- instructionSize) ! _id)
-                  .>> (set pc (pc + ((signExtend 24 30 .$ immed) .<! shift)))
-  where shift = _if tFlag % 1 ! 2 -- So that we can use the same instruction for both
-                                  -- ARM and THUMB states.
+                  .>> (set pc (pc + ((signExtend 24 30 .$ immed) .<! 2)))
+-- THUMB only B1
+raw (B1 immed) = set pc (pc .+ ((signExtend 8 32 .$ immed) .<! 1))
+-- THUMB only B2
+raw (B2 immed) = set pc (pc .+ ((signExtend 11 32 .$ immed) .<! 1))
 -- THUMB only BL
 -- hFlag == 1 => hi
 raw (BL hFlag offset) = 
-  if hFlag then set lr ((pc .+ (signExtend 11 32 .$ offset)) .<! 12)
-  else (set pc (lr .+ (offset .<! 1)) .>>
-        set lr ((pc .- instructionSize) .| 1))
+  if hFlag then set lr (pc .+ ((signExtend 11 32 .$ offset) .<! 12))
+  -- Some serious ugliness. Needed to set lr and pc simultaneously.
+  else (fromFunction (\c -> let lr' = get lr c
+                                pc' = get pc c in
+                            run (set lr ((pure pc' .- instructionSize) .| 1) .>>
+                            set pc (pure lr' .+ (offset .<! 1))) c))
 raw (BX rm) = set tFlag (rm .|?| 0)
           .>> set pc (rm .& 0xFFFFFFFE)
 
@@ -375,36 +384,41 @@ raw (STRH rd am) = set (memory16 address) (bitRange 0 15 .$ rd)
                .>> writeBack
   where (address, writeBack) = addressMode3 am
 -- Load and store multiple instructions
-raw (LDM1 am registers) = fst $ foldl for (_id, 0) registers
+raw (LDM1 am registers) = (fst $ foldl for (_id, 0) registers)
+                      .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
-                 .>> set r (memory32 $ address .+ (4 .* ii))
+                 .>> set r (memory32 $ address .+ ii)
 -- TODO: LDM2 is incorrect. It needs to load to user registers
 -- which is currently impossible with how the CPU is set up.
-raw (LDM2 am registers) = fst $ foldl for (_id, 0) registers
+raw (LDM2 am registers) = (fst $ foldl for (_id, 0) registers)
+                      .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
-                 .>> set r (memory32 $ address .+ (4 .* ii))
+                 .>> set r (memory32 $ address .+ ii)
 raw (LDM3 am registers) = (fst $ foldl for (_id, 0) registers)
-                         .>> set cpsr spsr
+                      .>> set cpsr spsr
+                      .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
-                 .>> set r (memory32 $ address .+ (4 .* ii))
-raw (STM1 am registers) = fst $ foldl for (_id, 0) registers
+                 .>> set r (memory32 $ address .+ ii)
+raw (STM1 am registers) = (fst $ foldl for (_id, 0) registers)
+                      .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
-                 .>> set (memory32 $ address .+ (4 .* ii)) r
+                 .>> set (memory32 $ address .+ ii) r
 -- TODO: STM2 is incorrect. It needs to store to user registers
 -- which is currently impossible with how the CPU is set up.
-raw (STM2 am registers) = fst $ foldl for (_id, 0) registers
+raw (STM2 am registers) = (fst $ foldl for (_id, 0) registers)
+                      .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
-                 .>> set (memory32 $ address .+ (4 .* ii)) r
+                 .>> set (memory32 $ address .+ ii) r
 
 raw NOP = _id
   
@@ -420,7 +434,7 @@ shifterCarry s = snd .$ shifter s
 
 shifter (I_operand immed_8 rotate_imm) = do {
   _if (rotate_imm .== 0) % _pair operand cFlag
-  !                       _pair operand (operand .|?| 31)
+  !                        _pair operand (operand .|?| 31)
 } where operand = immed_8 `_rotateRight` (rotate_imm * 2)
 
 shifter (R_operand rm) = _pair rm cFlag
@@ -485,11 +499,13 @@ dataProcess :: Bool -> Register -> Register -> Shifter
             -> Flag -> Flag -> Flag -> Flag
             -> Execute
 dataProcess sFlag rd rn s op nVal zVal cVal vVal =
+  -- TODO: Is this incorrect for rn = rd?
+  -- I.e. should the flag updates use the previous value of rn?
   set rd (rn `op` shifterOperand s)
   .>> (if sFlag then (
-          _if (rd .== r15)
-          %   (set cpsr spsr)
-          !   (set nFlag nVal
+          if   (rd == r15)
+          then (set cpsr spsr)
+          else (set nFlag nVal
           .>>  set zFlag zVal
           .>>  set cFlag cVal
           .>>  set vFlag vVal)

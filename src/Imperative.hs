@@ -41,11 +41,16 @@ instance Gettable (Value) where
   fromFunction = Immutable
 
 instance Functor (Value s) where
+  fmap f (Immediate x) = Immediate $ f x
   fmap f x = Immutable $ fmap f (get x)
 
 instance Applicative (Value s) where
   pure x = Immediate x
+  (Immediate x) <*> (Immediate y) = Immediate (x y)
   x <*> y = Immutable (get x <*> get y)
+
+instance Monad (Value s) where
+  x >>= y = fromFunction (\s -> get (y (get x s)) s)
 
 instance (Num a) => Num (Value s a) where
   (+) = liftA2 (+)

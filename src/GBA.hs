@@ -33,6 +33,8 @@ loop cpu = do
   case c of
     'q' -> do putStrLn "Goodbye."
               return ()
+    'b' -> do cpu' <- setBreakpoint cpu
+              loop cpu'
     ' ' -> do putStr "\n"
               loop (run step cpu)
     'i' -> do putStrLn $ show cpu
@@ -43,8 +45,25 @@ loop cpu = do
                          "  'q' to quit\n" ++
                          "  spacebar to step\n" ++
                          "  'i' to view cpu\n" ++
+                         "  'b' to break at an address\n" ++
                          "  'w' to view a word in memory"
               loop cpu
+
+setBreakpoint :: CPU -> IO CPU
+setBreakpoint cpu = do
+  hSetBuffering stdin LineBuffering
+  hSetEcho stdin True
+  putStr "Enter breakpoint address: "
+  address <- read <$> hGetLine stdin
+  hSetEcho stdin False
+  hSetBuffering stdin NoBuffering
+
+  return $ breakpoint cpu address
+
+breakpoint :: CPU -> Word32 -> CPU
+breakpoint c a
+  | get r15 c == a + (2 * get instructionSize c) = c
+  | otherwise = breakpoint (run step c) a
 
 viewMemoryWord :: CPU -> IO ()
 viewMemoryWord cpu = do
