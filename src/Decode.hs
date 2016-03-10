@@ -3,6 +3,7 @@ module Decode where
 
 import Data.Bits
 import Data.Word
+import Numeric
 
 import CPU
 import Imperative
@@ -95,7 +96,7 @@ decodeARM x
   | (x .&. 0x0E508000) == 0x08508000 = d decodeLDM3
   | (x .&. 0x0E500000) == 0x08000000 = d decodeSTM1
   | (x .&. 0x0E700000) == 0x08400000 = d decodeSTM2
-  | otherwise = Nothing
+  | otherwise = error $ "Undefined ARM instruction: " ++ showHex x ""
   where condition = decodeCond (x `shiftR` 0x1C)
         d :: (Word32 -> Maybe RawInstruction) -> Maybe Instruction
         d f = case (f x) of
@@ -389,6 +390,7 @@ decodeTHUMB x
   | x .&. 0xFE00 == 0x1A00 = decodeSUB3' x
   | x .&. 0xFF80 == 0xB080 = decodeSUB4' x
   | x .&. 0xFFC0 == 0x4200 = decodeTST' x
+  | otherwise = error $ "Undefined THUMB instruction: " ++ showHex x ""
 
 decodeADC' x = decodeARM x'
   where x' = 0xE0B00000 .|. (rd <! 16) .|. (rd <! 12) .|. rm
@@ -616,7 +618,7 @@ decodeORR' x = decodeARM x'
         rm = bitRange 3 5 x
 
 decodePOP' x = decodeARM x'
-  where x' = 0xE1BD0000 .|. (rBit <! 15) .|. registers
+  where x' = 0xE8BD0000 .|. (rBit <! 15) .|. registers
         rBit = bitRange 8 8 x
         registers = bitRange 0 7 x
 

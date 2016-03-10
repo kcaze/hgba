@@ -16,8 +16,14 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     CPU
+                     , Decode
+                     , Execute
+                     , Imperative
+                     , Memory
+                     , Types
   build-depends:       base >= 4.7 && < 5
                      , bytestring
+                     , containers
   default-language:    Haskell2010
 
 executable hgba-exe
@@ -25,8 +31,9 @@ executable hgba-exe
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
-                     , hgba
                      , bytestring
+                     , containers
+                     , hgba
   default-language:    Haskell2010
 
 test-suite hgba-test
