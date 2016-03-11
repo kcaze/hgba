@@ -4,9 +4,10 @@ module Execute where
 import Control.Applicative
 import Data.Bits
 import Data.Int
+import Data.List
 import Data.Word
 import qualified Data.ByteString as B
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 
 import CPU
 import GPU
@@ -22,6 +23,7 @@ run :: Execute -> CPU -> CPU
 run e c = get e c
 
 step :: Execute
+--step = incrementPC .>> updateLCD
 step = execute
    .>> decode
    .>> fetch
@@ -404,7 +406,7 @@ raw (STRH rd am) = set (memory16 address) (bitRange 0 15 .$ rd)
                .>> writeBack
   where (address, writeBack) = addressMode3 am
 -- Load and store multiple instructions
-raw (LDM1 am registers) = (fst $ foldl for (_id, 0) registers)
+raw (LDM1 am registers) = (fst $ foldl' for (_id, 0) registers)
                       .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
@@ -412,20 +414,20 @@ raw (LDM1 am registers) = (fst $ foldl for (_id, 0) registers)
                  .>> set r (memory32 $ address .+ ii)
 -- TODO: LDM2 is incorrect. It needs to load to user registers
 -- which is currently impossible with how the CPU is set up.
-raw (LDM2 am registers) = (fst $ foldl for (_id, 0) registers)
+raw (LDM2 am registers) = (fst $ foldl' for (_id, 0) registers)
                       .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set r (memory32 $ address .+ ii)
-raw (LDM3 am registers) = (fst $ foldl for (_id, 0) registers)
+raw (LDM3 am registers) = (fst $ foldl' for (_id, 0) registers)
                       .>> set cpsr spsr
                       .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
           where e' = e 
                  .>> set r (memory32 $ address .+ ii)
-raw (STM1 am registers) = (fst $ foldl for (_id, 0) registers)
+raw (STM1 am registers) = (fst $ foldl' for (_id, 0) registers)
                       .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)
@@ -433,7 +435,7 @@ raw (STM1 am registers) = (fst $ foldl for (_id, 0) registers)
                  .>> set (memory32 $ address .+ ii) r
 -- TODO: STM2 is incorrect. It needs to store to user registers
 -- which is currently impossible with how the CPU is set up.
-raw (STM2 am registers) = (fst $ foldl for (_id, 0) registers)
+raw (STM2 am registers) = (fst $ foldl' for (_id, 0) registers)
                       .>> writeBack
   where (address, writeBack) = addressMode4 am registers
         for (e, ii) r = (e', ii .+ 4)

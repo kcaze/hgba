@@ -87,7 +87,7 @@ infixl 1 %
 infixr 0 !
 
 (.>>) :: Gettable g => g a b -> g b c -> g a c
-x .>> y = fromFunction $ (get y) . (get x)
+x .>> y = fromFunction $! (get y) . (get x)
 
 (.$) :: Functor f => (a -> b) -> f a -> f b
 (.$) = (<$>)

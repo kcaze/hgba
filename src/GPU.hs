@@ -11,8 +11,8 @@ import Types
 
 readAddress :: Address -> (Word32 -> a) -> CPU -> a
 writeAddress :: Address -> (Word32 -> Word32) -> CPU -> CPU 
-readAddress a f c = f $ read32 a (cpu_memory c)
-writeAddress a f c = c { cpu_memory = memory }
+readAddress a f c = c `seq` f $ read32 a (cpu_memory c)
+writeAddress a f c = c `seq` c { cpu_memory = memory }
   where memory = write32 a (readAddress a f c) (cpu_memory c)
 
 -- Register names
@@ -68,9 +68,10 @@ setVCount w = writeAddress rVCOUNT (const w)
 vCount = Mutable getVCount setVCount
 
 updateLCD :: Execute
-updateLCD = fromFunction (\cpu -> (
+updateLCD = fromFunction (\cpu -> cpu `seq`(
       setVCount (cpu_cycles cpu `div` 308)
-  .>> setVRefresh (inRange (getVCount cpu `mod` 228) 0 159)
-  .>> setHRefresh (inRange ((cpu_cycles cpu `div` 4) `mod` 308) 0 239)
-  ) !cpu)
+    . setVRefresh (inRange ((cpu_cycles cpu `div` 308) `mod` 228) 0 159)
+    . setHRefresh (inRange (cpu_cycles cpu `mod` 308) 0 239)
+    ) cpu)
+
   where inRange x l h = l <= x && x <= h

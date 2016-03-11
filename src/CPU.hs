@@ -218,7 +218,7 @@ memory8 address = Mutable (\c -> getMemory8 (get address c) c)
 memory16 address = Mutable (\c -> getMemory16 (get address c) c)
                           (\w c -> setMemory16 (get address c) w c) 
 memory32 address = Mutable (\c -> getMemory32 (get address c) c)
-                          (\w c -> setMemory32 (get address c) w c) 
+                          (\w c -> setMemory32 (get address c) w c)
 
 -- Immutable CPU values (i.e. impure functions)
 instructionSize :: Immediate Word32
