@@ -131,8 +131,10 @@ setR14 x c = case mode of Abort      -> c { cpu_r14_abt = x }
                           _          -> c { cpu_r14 = x }
   where mode = getProcessorMode c
 -- Setting r15 flushes pipeline
+-- Also, the value in r15 is always word / halfword aligned depending on
+-- the state. 
 setR15 x c = c {
-               cpu_r15 = x,
+               cpu_r15 = x .&. (if getTFlag c then 0xFFFFFFFE else 0xFFFFFFFC),
                cpu_fetch = Nothing,
                cpu_decode = Nothing
              }

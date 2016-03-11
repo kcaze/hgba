@@ -78,6 +78,7 @@ data Instruction = Instruction Flag RawInstruction
 
 data RawInstruction = ADC Bool Register Register Shifter
                     | ADD Bool Register Register Shifter
+                    | ADD5 Register (Immediate Word32) -- THUMB only
                     | AND Bool Register Register Shifter
                     | B Bool (Immediate Word32)
                     | B1 (Immediate Word32) -- THUMB only

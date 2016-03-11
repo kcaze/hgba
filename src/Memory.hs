@@ -2,6 +2,7 @@ module Memory where
 
 import Data.Word
 import Data.Bits
+import qualified Data.ByteString as B
 import qualified Data.Map as Map
 
 -- Little endian reads and writes to the address space
@@ -14,16 +15,18 @@ data Memory = Memory {
   ioram :: IORAM,
   paletteRAM :: PaletteRAM,
   vram :: VRAM,
-  oam :: OAM
+  oam :: OAM,
+  gameROM :: GameROM
 } deriving (Eq, Show)
 
-data SystemROM = SystemROM (Map.Map Address Word32) deriving (Eq, Show)
+data SystemROM = SystemROM (B.ByteString) deriving (Eq, Show)
 data EWRAM = EWRAM (Map.Map Address Word32) deriving (Eq, Show)
 data IWRAM = IWRAM (Map.Map Address Word32) deriving (Eq, Show)
 data IORAM = IORAM (Map.Map Address Word32) deriving (Eq, Show)
 data PaletteRAM = PaletteRAM (Map.Map Address Word32) deriving (Eq, Show)
 data VRAM = VRAM (Map.Map Address Word32) deriving (Eq, Show)
 data OAM = OAM (Map.Map Address Word32) deriving (Eq, Show)
+data GameROM = GameROM (B.ByteString) deriving (Eq, Show)
 
 class MemoryRegion m where
   read8 :: Address -> m -> Word32
@@ -45,9 +48,11 @@ class MemoryRegion m where
 
 -- TODO: This is special and reads need to return the current prefetched instruction. 
 instance MemoryRegion SystemROM where
-  read8 address (SystemROM memory) = maybe 0 id value
-    where value = Map.lookup address memory
-  write8 address byte = id
+  read8 a (SystemROM s)
+    | B.null s' = 0
+    | otherwise = fromIntegral $ B.head s'
+    where s' = B.drop (fromIntegral (a .&. 0xFFFFFF)) s
+  write8 _ _ = id
 
 instance MemoryRegion EWRAM where
   read8 a (EWRAM m) = maybe 0 id b
@@ -81,6 +86,13 @@ instance MemoryRegion OAM where
     where b = Map.lookup (a .&. 0x3FF) m
   write8 a b (OAM m) = OAM $ Map.insert (a .&. 0x3FF) b m
 
+instance MemoryRegion GameROM where
+  read8 a (GameROM s)
+    | B.null s' = 0
+    | otherwise = fromIntegral $ B.head s'
+    where s' = B.drop (fromIntegral (a .&. 0xFFFFFF)) s
+  write8 _ _ = id
+
 instance MemoryRegion Memory where
   read8 a m = case (a `shiftR` 0x18) of
             0x00 -> read8 a (systemROM m)
@@ -91,6 +103,7 @@ instance MemoryRegion Memory where
             0x05 -> read8 a (paletteRAM m)
             0x06 -> read8 a (vram m)
             0x07 -> read8 a (oam m)
+            0x08 -> read8 a (gameROM m)
             _    -> 0
   write8 a b m = case (a `shiftR` 0x18) of
             0x00 -> m { systemROM = write8 a b (systemROM m) }
@@ -101,4 +114,5 @@ instance MemoryRegion Memory where
             0x05 -> m { paletteRAM = write8 a b (paletteRAM m) }
             0x06 -> m { vram = write8 a b (vram m) } 
             0x07 -> m { oam = write8 a b (oam m) } 
+            0x08 -> m { gameROM = write8 a b (gameROM m) } 
             _    -> m

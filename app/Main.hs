@@ -22,8 +22,9 @@ main = do
   hSetBuffering stdin NoBuffering
   hSetBuffering stdout NoBuffering
   hSetEcho stdin False
-  bios <- B.readFile "GBA.ROM"
-  let cpu = run (loadBIOS bios) powerUp
+  bios <- B.readFile "bios.bin"
+  game <- B.readFile "game.bin"
+  let cpu = run (loadBIOS bios .>> loadGame game) powerUp
   loop cpu
 
 

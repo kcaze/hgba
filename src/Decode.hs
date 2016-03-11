@@ -21,7 +21,7 @@ pl = _not nFlag
 vs = vFlag
 vc = _not vFlag
 hi = cs .&& ne
-ls = cc .&& eq
+ls = cc .|| eq
 ge = mi .== vs
 lt = mi ./= vs
 gt = ne .&& ge
@@ -419,10 +419,9 @@ decodeADD4' x = decodeARM x'
         rd = (bitRange 0 2 x) .|. (bitRange 7 7 x <! 3)
         rm = (bitRange 3 5 x) .|. (bitRange 6 6 x <! 3)
 
-decodeADD5' x = decodeARM x'
-  where x' = 0xE28F0F00 .|. (rd <! 12) .|. immed8
-        rd = bitRange 8 10 x
-        immed8 = bitRange 0 7 x
+decodeADD5' x = Just $ Instruction al (ADD5 rd immed8)
+  where rd = register (fromIntegral $ bitRange 8 10 x)
+        immed8 = pure $ bitRange 0 7 x
 
 decodeADD6' x = decodeARM x'
   where x' = 0xE28D0F00 .|. (rd <! 12) .|. immed8
@@ -497,8 +496,8 @@ decodeEOR' x = decodeARM x'
         rm = bitRange 3 5 x
 
 decodeLDMIA' x = decodeARM x'
-  where x' = 0xE8900000 .|. wBit .|. rn .|. registers
-        wBit = if registers `testBit` (fromIntegral rn) then (bit 21) else 0
+  where x' = 0xE8900000 .|. (wBit <! 21) .|. (rn <! 16) .|. registers
+        wBit = if registers `testBit` (fromIntegral rn) then 0 else 1
         rn = bitRange 8 10 x
         registers = bitRange 0 7 x
 

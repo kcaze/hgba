@@ -107,27 +107,29 @@ powerUp = get reset CPU {
   cpu_spsr_svc  = 0,
   cpu_spsr_und  = 0,
   cpu_memory = Memory {
-    systemROM = SystemROM Map.empty,
+    systemROM = SystemROM B.empty,
     ewram = EWRAM Map.empty,
     iwram = IWRAM Map.empty,
     ioram = IORAM Map.empty,
     paletteRAM = PaletteRAM Map.empty,
     vram = VRAM Map.empty,
-    oam = OAM Map.empty
+    oam = OAM Map.empty,
+    gameROM = GameROM B.empty
   },
   cpu_fetch = Nothing,
   cpu_decode = Nothing,
   cpu_cycles = 0
 }
 
--- I'm sure this could be better written.
+-- I'm sure these could be better written.
 loadBIOS :: B.ByteString -> Execute
-loadBIOS bios = fromFunction $ f
+loadBIOS bios = fromFunction f
   where f cpu = cpu { cpu_memory = memory' }
-          where memory' = (cpu_memory cpu) { systemROM = biosROM }
-                biosROM = SystemROM . fst $
-                          B.foldl update (Map.empty, 0) bios
-                          where update (m, ii) b = (Map.insert ii (fromIntegral b) m, ii+1)
+          where memory' = (cpu_memory cpu) { systemROM = SystemROM bios }
+loadGame :: B.ByteString -> Execute
+loadGame game = fromFunction f
+  where f cpu = cpu { cpu_memory = memory' }
+          where memory' = (cpu_memory cpu) { gameROM = GameROM game }
 
 ------------------
 -- Instructions --
@@ -195,6 +197,8 @@ raw (ADD s rd rn shift) = do
   where op = (.+)
         n = (rd .|?| 31)
         z = (rd .== 0)
+-- Necessary because pc[1:0] ignored for some reason even in THUMB
+raw (ADD5 rd immed) = set rd ((pc .& 0xFFFFFFFC) + (immed .* 4)) -- THUMB only
 raw (ADC s rd rn shift) = do
   c <-  _carryFrom rn (shifterOperand shift .+ cBit)
   v <- _overflowFromAdd rn (shifterOperand shift .+ cBit)
