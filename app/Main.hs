@@ -37,11 +37,13 @@ main = do
 
 loop :: CPU -> Renderer -> IO ()
 loop cpu renderer = do
+  {--
   rendererDrawColor renderer $= V4 0 0 0 255
   clear renderer
   rendererDrawColor renderer $= V4 255 255 255 255
   drawPoint renderer (P $ V2 24 24)
   present renderer
+  --}
 
   putStr $ prompt cpu
   c <- hGetChar stdin

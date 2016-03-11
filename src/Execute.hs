@@ -9,6 +9,7 @@ import qualified Data.ByteString as B
 import qualified Data.Map as Map
 
 import CPU
+import GPU
 import Decode
 import Imperative
 import Memory
@@ -18,7 +19,7 @@ import Types
 -- CPU Execution --
 -------------------
 run :: Execute -> CPU -> CPU
-run = get
+run e c = get e c
 
 step :: Execute
 step = execute
@@ -26,6 +27,7 @@ step = execute
    .>> fetch
    .>> incrementPC
    .>> (fromFunction $ \c -> c { cpu_cycles = (cpu_cycles c) + 1 })
+   .>> updateLCD
 
 execute :: Execute
 execute = fromFunction execute'
