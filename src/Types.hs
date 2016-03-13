@@ -4,6 +4,7 @@ module Types ( Immediate, Register, Flag, Bit, Execute
              , Shifter(..), AddressingModeType(..)
              , AddressingMode2(..), AddressingMode3(..)
              , AddressingMode4(..)
+             , Exception(..)
              ) where
 
 import Data.Word
@@ -68,7 +69,8 @@ data CPU = CPU {
   cpu_memory    :: !Memory,
   cpu_fetch     :: !(Maybe Word32),
   cpu_decode    :: !(Maybe Instruction),
-  cpu_cycles    :: !Word32
+  cpu_cycles    :: !Word32,
+  cpu_exception :: !(Maybe Exception)
 } deriving (Eq)
 
 instance MemoryRegion CPU where
@@ -162,4 +164,14 @@ data AddressingMode4 = IA Bool Register
                      | IB Bool Register
                      | DA Bool Register
                      | DB Bool Register
+  deriving (Show, Eq)
+
+-- Exception type
+data Exception = E_Reset
+               | E_UndefinedInstruction
+               | E_SoftwareInterrupt
+               | E_PrefetchAbort
+               | E_DataAbort
+               | E_IRQ
+               | E_FIQ
   deriving (Show, Eq)

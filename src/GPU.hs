@@ -14,20 +14,26 @@ import Imperative
 import Memory
 import Types
 
+---------------------------------------------
+-- Hardware register and address constants --
+---------------------------------------------
+rDISPCNT = 0x04000000
+rDISPSTAT = 0x04000004
+rVCOUNT = 0x04000006
+rIE = 0x04000200
+rIF = 0x04000202
+rIME = 0x04000208
+rKEY = 0x4000130
+addrOAM = 0x07000000
+addrOBJTiles = 0x06010000
+addrBGPalette = 0x05000000
+addrOBJPalette = 0x05000200
+
 readAddress :: Address -> (Word32 -> a) -> CPU -> a
 writeAddress :: Address -> (Word32 -> Word32) -> CPU -> CPU 
 readAddress a f c = c `seq` f $ read32 a (cpu_memory c)
 writeAddress a f c = c `seq` c { cpu_memory = memory }
   where memory = write32 a (readAddress a f c) (cpu_memory c)
-
--- Register names
-rDISPCNT = 0x04000000
-rDISPSTAT = 0x04000004
-rVCOUNT = 0x04000006
-addrOAM = 0x07000000
-addrOBJTiles = 0x06010000
-addrBGPalette = 0x05000000
-addrOBJPalette = 0x05000200
 
 data VideoMode = Mode0 | Mode1 | Mode2 | Mode3 | Mode4 | Mode5
   deriving (Eq, Show)
@@ -76,11 +82,12 @@ getVCount = readAddress rVCOUNT id
 setVCount w = writeAddress rVCOUNT (const w)
 vCount = Mutable getVCount setVCount
 
-updateLCD :: Execute
-updateLCD = fromFunction (\cpu -> cpu `seq`(
+updateHardwareRegisters :: Execute
+updateHardwareRegisters = fromFunction (\cpu -> cpu `seq`(
       setVCount (cpu_cycles cpu `div` 308)
     . setVRefresh (inRange ((cpu_cycles cpu `div` 308) `mod` 228) 0 159)
     . setHRefresh (inRange (cpu_cycles cpu `mod` 308) 0 239)
+    . write32 rKEY 0x3FF --TODO: Handle input
     ) cpu)
 
   where inRange x l h = l <= x && x <= h
@@ -171,3 +178,22 @@ render cpu renderer = do
   if get oamEnabled cpu then renderSprites cpu renderer else return ()
 
   present renderer
+
+----------------
+-- Interrupts --
+----------------
+triggerInterrupts :: Execute
+triggerInterrupts = fromFunction f
+  where f cpu = if testBit (read8 rIME cpu) 0
+                then run triggerVBlankInterrupt cpu
+                else cpu
+
+-- TODO: Implement the other interrupts
+triggerVBlankInterrupt :: Execute 
+triggerVBlankInterrupt = fromFunction f
+  where f cpu = if (testBit (read8 rIE cpu) 0 &&
+                    testBit (read8 rDISPSTAT cpu) 3) &&
+                    (cpu_cycles cpu `mod` 308 == 0 &&
+                     cpu_cycles cpu `div` 308 == 0xA0)
+                then run (enterException E_IRQ) (write8 rIF (bit 0) cpu)
+                else cpu

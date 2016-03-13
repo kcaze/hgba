@@ -9,6 +9,7 @@ module CPU ( r0, r1, r2, r3, r4, r5, r6, r7, r8, r9
            , memory8, memory16, memory32
            , instructionSize
            , fromBit, fromFlag
+           , run, enterException, leaveException
            ) where
 
 import Data.Bits
@@ -27,6 +28,28 @@ fromBit (Immutable g) = Immutable ((/= 0) . g)
 fromBit (Mutable g s) = Mutable ((/= 0) . g) (s . (\x -> if x then 1 else 0))
 fromFlag (Immutable g) = Immutable ((\x -> if x then 1 else 0) . g)
 fromFlag (Mutable g s) = Mutable ((\x -> if x then 1 else 0) . g) (s . (/= 0))
+
+run :: Execute -> CPU -> CPU
+run e c = get e c
+
+enterException :: Exception -> Execute
+enterException E_IRQ = set lr pc
+                   .>> set tFlag (pure False)
+                   .>> set processorMode (pure IRQ)
+                   .>> set spsr cpsr
+                   .>> set iFlag (pure True)
+                   .>> set pc 0x18
+
+leaveException :: Execute
+leaveException = fromFunction f
+  where irqReturn = Just $ Instruction (pure True) (SUB True r15 r14 (I_operand 4 0))
+        leave cpu = run (set cpsr spsr) cpu
+        f cpu = case (cpu_exception cpu) of
+                Just E_IRQ -> if (cpu_decode cpu == irqReturn)
+                              then run (set cpsr spsr
+                                        .>> set iFlag (pure False)) cpu
+                              else cpu
+                _ -> cpu
 
 -- Pure CPU Getters
 type GetW = CPU -> Word32
@@ -256,6 +279,7 @@ instance Show CPU where
         ++ "       fetch = " ++ show (cpu_fetch c) ++ "\n"
         ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
         ++ "      cycles = " ++ show (cpu_cycles c) ++ "\n"
+        ++ "   exception = " ++ show (cpu_exception c) ++ "\n"
         ++ "}"
 
 -- Detailed show.
@@ -308,4 +332,5 @@ show' c = "CPU {\n"
         ++ "       fetch = " ++ show (cpu_fetch c) ++ "\n"
         ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
         ++ "      cycles = " ++ show (cpu_cycles c) ++ "\n"
+        ++ "   exception = " ++ show (cpu_exception c) ++ "\n"
         ++ "}"

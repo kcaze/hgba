@@ -19,20 +19,17 @@ import Types
 -------------------
 -- CPU Execution --
 -------------------
-run :: Execute -> CPU -> CPU
-run e c = get e c
-
 step :: Execute
---step = incrementPC .>> updateLCD
 step = execute
    .>> decode
    .>> fetch
    .>> incrementPC
    .>> (fromFunction $ \c -> c { cpu_cycles = (cpu_cycles c) + 1 })
-   .>> updateLCD
+   .>> updateHardwareRegisters
+   .>> triggerInterrupts
 
 execute :: Execute
-execute = fromFunction execute'
+execute = leaveException .>> fromFunction execute'
   where i cpu = instruction <$> (cpu_decode cpu)
         execute' cpu = (maybe cpu (`run` cpu) (i cpu)) {
                          cpu_decode = Nothing
@@ -122,7 +119,8 @@ powerUp = get reset CPU {
   },
   cpu_fetch = Nothing,
   cpu_decode = Nothing,
-  cpu_cycles = 0
+  cpu_cycles = 0,
+  cpu_exception = Nothing
 }
 
 -- I'm sure these could be better written.

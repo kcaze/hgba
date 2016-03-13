@@ -68,7 +68,11 @@ instance MemoryRegion IWRAM where
 instance MemoryRegion IORAM where
   read8 a (IORAM m) = maybe 0 id b
     where b = Map.lookup (a .&. 0x3FF) m
-  write8 a b (IORAM m) = IORAM $ Map.insert (a .&. 0x3FF) b m
+  write8 a b (IORAM m) -- Hardware registers are weird
+    | a' == 0x202 || a' == 0x203 = -- REG_IF
+        IORAM $ Map.insert a' ((read8 a' (IORAM m)) `xor` b) m
+    | otherwise = IORAM $ Map.insert a' b m
+    where a' = a .&. 0x3FF
 
 instance MemoryRegion PaletteRAM where
   read8 a (PaletteRAM m) = maybe 0 id b
