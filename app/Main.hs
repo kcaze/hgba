@@ -61,6 +61,8 @@ debugLoop cpu renderer = do
               debugLoop (run step cpu) renderer
     'i' -> do putStrLn $ show cpu
               debugLoop cpu renderer
+    'I' -> do putStrLn $ showDetailed cpu
+              debugLoop cpu renderer
     'w' -> do viewMemoryWord cpu
               debugLoop cpu renderer
     _   -> do putStrLn $ "Commands:\n" ++
@@ -68,6 +70,7 @@ debugLoop cpu renderer = do
                          "  'q' to quit\n" ++
                          "  spacebar to step\n" ++
                          "  'i' to view cpu\n" ++
+                         "  'I' to view detailed cpu\n" ++
                          "  'b' to break at an address\n" ++
                          "  'w' to view a word in memory"
               debugLoop cpu renderer

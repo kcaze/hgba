@@ -10,6 +10,7 @@ module CPU ( r0, r1, r2, r3, r4, r5, r6, r7, r8, r9
            , instructionSize
            , fromBit, fromFlag
            , run, enterException, leaveException
+           , showDetailed
            ) where
 
 import Data.Bits
@@ -33,12 +34,14 @@ run :: Execute -> CPU -> CPU
 run e c = get e c
 
 enterException :: Exception -> Execute
-enterException E_IRQ = set lr pc
-                   .>> set tFlag (pure False)
-                   .>> set processorMode (pure IRQ)
-                   .>> set spsr cpsr
-                   .>> set iFlag (pure True)
-                   .>> set pc 0x18
+enterException E_IRQ = do
+  cpsr' <- cpsr
+  (set processorMode (pure IRQ)
+    .>> set spsr (pure cpsr')
+    .>> set lr pc
+    .>> set tFlag (pure False)
+    .>> set iFlag (pure True)
+    .>> set pc 0x18)
 
 leaveException :: Execute
 leaveException = fromFunction f
@@ -46,8 +49,7 @@ leaveException = fromFunction f
         leave cpu = run (set cpsr spsr) cpu
         f cpu = case (cpu_exception cpu) of
                 Just E_IRQ -> if (cpu_decode cpu == irqReturn)
-                              then run (set cpsr spsr
-                                        .>> set iFlag (pure False)) cpu
+                              then run (set cpsr spsr) cpu
                               else cpu
                 _ -> cpu
 
@@ -166,10 +168,10 @@ setCPSR x c = c { cpu_cpsr = x }
 
 setSPSR x c = 
   case mode of Abort      -> c { cpu_spsr_abt = x }
-               FIQ        -> c { cpu_spsr_abt = x }
-               IRQ        -> c { cpu_spsr_abt = x }
-               Supervisor -> c { cpu_spsr_abt = x }
-               Undefined  -> c { cpu_spsr_abt = x }
+               FIQ        -> c { cpu_spsr_fiq = x }
+               IRQ        -> c { cpu_spsr_irq = x }
+               Supervisor -> c { cpu_spsr_svc = x }
+               Undefined  -> c { cpu_spsr_und = x }
                _          -> error "Attempt to set SPSR in user or system mode."
   where mode = getProcessorMode c
 
@@ -283,7 +285,7 @@ instance Show CPU where
         ++ "}"
 
 -- Detailed show.
-show' c = "CPU {\n"
+showDetailed c = "CPU {\n"
         ++ "          r0 = " ++ showHex (cpu_r0 c) "\n"
         ++ "          r1 = " ++ showHex (cpu_r1 c) "\n"
         ++ "          r2 = " ++ showHex (cpu_r2 c) "\n"

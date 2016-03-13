@@ -4,6 +4,7 @@ module GPU where
 import Control.Applicative
 import Data.Bits
 import Data.Word
+import qualified Data.Map.Strict as Map
 import Numeric
 import SDL hiding (get)
 import Linear
@@ -29,17 +30,50 @@ addrOBJTiles = 0x06010000
 addrBGPalette = 0x05000000
 addrOBJPalette = 0x05000200
 
-readAddress :: Address -> (Word32 -> a) -> CPU -> a
-writeAddress :: Address -> (Word32 -> Word32) -> CPU -> CPU 
-readAddress a f c = c `seq` f $ read32 a (cpu_memory c)
-writeAddress a f c = c `seq` c { cpu_memory = memory }
-  where memory = write32 a (readAddress a f c) (cpu_memory c)
+-- Direct read and write access to hardware IO registers
+readIO8 :: Address -> (Word32 -> a) -> CPU -> a
+writeIO8 :: Address -> (Word32 -> Word32) -> CPU -> CPU 
+readIO16 :: Address -> (Word32 -> a) -> CPU -> a
+writeIO16 :: Address -> (Word32 -> Word32) -> CPU -> CPU 
+readIO32 :: Address -> (Word32 -> a) -> CPU -> a
+writeIO32 :: Address -> (Word32 -> Word32) -> CPU -> CPU 
+
+readIO8 a f c = c `seq` f $ w
+  where IORAM m = ioram . cpu_memory $ c
+        w = maybe 0 id (Map.lookup (a .&. 0x3FF) m)
+writeIO8 a f c = c `seq` c { cpu_memory = (cpu_memory c) { ioram = m' } }
+  where IORAM m = ioram . cpu_memory $ c
+        m' = IORAM $ Map.insert (a .&. 0x3FF) (readIO8 a f c) m
+readIO16 a f c = c `seq` f $ (w2 .|. w1)
+  where w1 = readIO8 a id c
+        w2 = readIO8 (a+1) id c <! 8
+writeIO16 a f c = c `seq` c { cpu_memory = (cpu_memory c) { ioram = m'' } }
+  where w = readIO16 a f c
+        w1 = bitRange 0 7 w
+        w2 = bitRange 8 15 w
+        IORAM m = ioram . cpu_memory $ c
+        m' = Map.insert (a .&. 0x3FF) w1 m
+        m'' = IORAM $ Map.insert ((a+1) .&. 0x3FF) w2 m'
+readIO32 a f c = c `seq` f $ (w2 .|. w1)
+  where w1 = readIO16 a id c
+        w2 = readIO16 (a+2) id c <! 16
+writeIO32 a f c = c `seq` c { cpu_memory = (cpu_memory c) { ioram = m'''' } }
+  where w = readIO32 a f c
+        w1 = bitRange 0 7 w
+        w2 = bitRange 8 15 w
+        w3 = bitRange 16 23 w
+        w4 = bitRange 24 31 w
+        IORAM m = ioram . cpu_memory $ c
+        m' = Map.insert (a .&. 0x3FF) w1 m
+        m'' = Map.insert ((a+1) .&. 0x3FF) w2 m'
+        m''' = Map.insert ((a+2) .&. 0x3FF) w3 m''
+        m'''' = IORAM $ Map.insert ((a+3) .&. 0x3FF) w4 m'''
 
 data VideoMode = Mode0 | Mode1 | Mode2 | Mode3 | Mode4 | Mode5
   deriving (Eq, Show)
 
 getVideoMode :: CPU -> VideoMode
-getVideoMode = readAddress rDISPCNT (\m ->
+getVideoMode = readIO16 rDISPCNT (\m ->
   case m .&. 0b111 of
     0 -> Mode0
     1 -> Mode1
@@ -51,7 +85,7 @@ getVideoMode = readAddress rDISPCNT (\m ->
   )
 
 setVideoMode :: VideoMode -> CPU -> CPU
-setVideoMode mode = writeAddress rDISPCNT (\w ->
+setVideoMode mode = writeIO16 rDISPCNT (\w ->
     (w .&. complement 0b111) .|. m
   ) where m = case mode of
                 Mode0 -> 0
@@ -67,24 +101,24 @@ videoMode = Mutable getVideoMode setVideoMode
 [bg0Enabled, bg1Enabled, bg2Enabled, bg3Enabled, oamEnabled,
  window0Enabled, window1Enabled, spriteWindowsEnabled] = map f [8..15]
   where f n = Mutable (g n) (s n)
-        g n = readAddress rDISPCNT (`testBit` n)
-        s n b = writeAddress rDISPCNT (\w -> toggleBit w n b)
+        g n = readIO16 rDISPCNT (`testBit` n)
+        s n b = writeIO16 rDISPCNT (toggleBit n b)
 
-getVRefresh = readAddress rDISPSTAT (`testBit` 0)
-setVRefresh b = writeAddress rDISPSTAT (\w -> toggleBit w 0 b)
+getVRefresh = readIO16 rDISPSTAT (`testBit` 0)
+setVRefresh b = writeIO16 rDISPSTAT (toggleBit 0 b)
 vRefresh = Mutable getVRefresh setVRefresh
 
-getHRefresh = readAddress rDISPSTAT (`testBit` 1)
-setHRefresh b = writeAddress rDISPSTAT (\w -> toggleBit w 1 b)
+getHRefresh = readIO16 rDISPSTAT (`testBit` 1)
+setHRefresh b = writeIO16 rDISPSTAT (toggleBit 1 b)
 hRefresh = Mutable getHRefresh setHRefresh
 
-getVCount = readAddress rVCOUNT id
-setVCount w = writeAddress rVCOUNT (const w)
+getVCount = readIO16 rVCOUNT id
+setVCount w = writeIO16 rVCOUNT (const w)
 vCount = Mutable getVCount setVCount
 
 updateHardwareRegisters :: Execute
 updateHardwareRegisters = fromFunction (\cpu -> cpu `seq`(
-      setVCount (cpu_cycles cpu `div` 308)
+      setVCount ((cpu_cycles cpu `div` 308) `mod` 228)
     . setVRefresh (inRange ((cpu_cycles cpu `div` 308) `mod` 228) 0 159)
     . setHRefresh (inRange (cpu_cycles cpu `mod` 308) 0 239)
     . write32 rKEY 0x3FF --TODO: Handle input
@@ -116,6 +150,11 @@ getSprite n cpu = Sprite {
                        (0b10, 0b10) -> (2, 4)
                        (0b10, 0b11) -> (4, 8)
                        _ -> error "Invalid sprite size.",
+    sprite_mode = case (bitRange 10 11 attr0) of
+                       0b00 -> NormalSprite
+                       0b01 -> SemiTransparentSprite
+                       0b10 -> ObjWindowSprite
+                       0b11 -> error "Invalid sprite type.",
     sprite_tile = fromIntegral $ attr2 .&. 0x3FF,
     sprite_palette = fromIntegral $ attr2 .&. 0xF000,
     sprite_256ColorEnabled = testBit attr0 13
@@ -126,14 +165,20 @@ getSprite n cpu = Sprite {
         attr3 = read16 (address + 6) cpu
         address = addrOAM + (fromIntegral $ 8 * n)
 
+data SpriteMode = NormalSprite
+                | SemiTransparentSprite
+                | ObjWindowSprite
+  deriving (Eq, Show)
+
 data Sprite = Sprite {
   sprite_x :: Int,
   sprite_y :: Int,
   sprite_size :: (Int, Int),
   sprite_tile :: Int,
   sprite_palette :: Int,
-  sprite_256ColorEnabled :: Bool
-}
+  sprite_256ColorEnabled :: Bool,
+  sprite_mode :: SpriteMode
+} deriving (Eq, Show)
 
 ---------------
 -- Renderers --
@@ -150,7 +195,9 @@ render256ColorTile baseAddress n (x, y) cpu renderer = do
   where address = baseAddress + (fromIntegral $ n * 0x20)
         plot (dx, dy) = do
           let pixel = read8 (address + fromIntegral dx + 8 * fromIntegral dy) cpu
-          renderPixel (getOBJ256Color (fromIntegral pixel) cpu) (x + dx, y + dy) renderer
+          if pixel /= 0 then
+            renderPixel (getOBJ256Color (fromIntegral pixel) cpu) (x + dx, y + dy) renderer
+          else return ()
 
 renderSprite :: Int -> CPU -> Renderer -> IO()
 renderSprite n cpu renderer =
@@ -184,16 +231,15 @@ render cpu renderer = do
 ----------------
 triggerInterrupts :: Execute
 triggerInterrupts = fromFunction f
-  where f cpu = if testBit (read8 rIME cpu) 0
+  where f cpu = if testBit (readIO8 rIME id cpu) 0
                 then run triggerVBlankInterrupt cpu
                 else cpu
 
 -- TODO: Implement the other interrupts
 triggerVBlankInterrupt :: Execute 
 triggerVBlankInterrupt = fromFunction f
-  where f cpu = if (testBit (read8 rIE cpu) 0 &&
-                    testBit (read8 rDISPSTAT cpu) 3) &&
-                    (cpu_cycles cpu `mod` 308 == 0 &&
-                     cpu_cycles cpu `div` 308 == 0xA0)
-                then run (enterException E_IRQ) (write8 rIF (bit 0) cpu)
+  where f cpu = if testBit (readIO8 rIE id cpu) 0 &&
+                   testBit (readIO8 rDISPSTAT id cpu) 3 &&
+                   cpu_cycles cpu `mod` 70224 == 49280 -- TODO: Cycle accuracy
+                then run (enterException E_IRQ) (writeIO8 rIF (toggleBit 0 True) cpu)
                 else cpu

@@ -674,8 +674,8 @@ decodeSTRH1' x = decodeARM x'
   where x' = 0xE1C000B0 .|. (rn <! 16) .|. (rd <! 12) .|. (i1 <! 8) .|. (i2 <! 1)
         rn = bitRange 3 5 x
         rd = bitRange 0 2 x
-        i1 = bitRange 6 8 x
-        i2 = bitRange 9 10 x
+        i1 = bitRange 9 10 x
+        i2 = bitRange 6 8 x
 
 decodeSTRH2' x = decodeARM x'
   where x' = 0xE18000B0 .|. (rn <! 16) .|. (rd <! 12) .|. rm

@@ -70,7 +70,11 @@ instance MemoryRegion IORAM where
     where b = Map.lookup (a .&. 0x3FF) m
   write8 a b (IORAM m) -- Hardware registers are weird
     | a' == 0x202 || a' == 0x203 = -- REG_IF
-        IORAM $ Map.insert a' ((read8 a' (IORAM m)) `xor` b) m
+        IORAM $ Map.insert a' (read8 a' (IORAM m) .&. complement b) m
+    | a' == 0x004 = -- REG_DISPSTAT
+        IORAM $ Map.insert a' ((read8 a' (IORAM m) .&. 0x7)
+                               .|. (b .&. complement 0x7)) m
+    | a' == 0x006 || a' == 0x007 = IORAM m
     | otherwise = IORAM $ Map.insert a' b m
     where a' = a .&. 0x3FF
 

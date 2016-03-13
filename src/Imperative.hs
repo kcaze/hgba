@@ -161,7 +161,7 @@ class (Num a, Ord a, Integral a, FiniteBits a) => Bits' a where
   bitLength :: a -> Int
   bits :: Int -> Int -> a
   bitRange :: Int -> Int -> a -> a
-  toggleBit :: a -> Int -> Bool -> a
+  toggleBit :: Int -> Bool -> a -> a
   testMask :: a -> a -> Bool
   logicalShiftLeft :: a -> Int -> a
   logicalShiftRight :: a -> Int -> a
@@ -180,7 +180,7 @@ class (Num a, Ord a, Integral a, FiniteBits a) => Bits' a where
     | l == 0 = bit (h+1) - 1
     | otherwise = bits 0 h `xor` bits 0 (l - 1)
   bitRange l h w = (w .&. bits l h) `logicalShiftRight` l
-  toggleBit x i b = if b then setBit x i else clearBit x i
+  toggleBit n b w = if b then setBit w n else clearBit w n
   testMask x y = (x .&. y) /= 0
   logicalShiftLeft = shiftL
   logicalShiftRight w n = shiftR w n .&. bits 0 (bitLength w - 1 - n)

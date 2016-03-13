@@ -29,11 +29,11 @@ step = execute
    .>> triggerInterrupts
 
 execute :: Execute
-execute = leaveException .>> fromFunction execute'
+execute = fromFunction execute' .>>
+          leaveException .>>
+          (fromFunction $ \cpu -> cpu { cpu_decode = Nothing })
   where i cpu = instruction <$> (cpu_decode cpu)
-        execute' cpu = (maybe cpu (`run` cpu) (i cpu)) {
-                         cpu_decode = Nothing
-                       }
+        execute' cpu = maybe cpu (`run` cpu) (i cpu)
 
 incrementPC :: Execute
 incrementPC = fromFunction increment
