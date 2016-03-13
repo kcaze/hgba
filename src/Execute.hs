@@ -20,13 +20,18 @@ import Types
 -- CPU Execution --
 -------------------
 step :: Execute
-step = execute
-   .>> decode
-   .>> fetch
-   .>> incrementPC
-   .>> (fromFunction $ \c -> c { cpu_cycles = (cpu_cycles c) + 1 })
-   .>> updateHardwareRegisters
-   .>> triggerInterrupts
+step = fromFunction f
+  where f cpu = if cpu_halt cpu then run f_halt cpu else run f_nohalt cpu
+        f_halt = (fromFunction $ \c -> c { cpu_cycles = (cpu_cycles c) + 1 })
+             .>> updateHardwareRegisters
+             .>> triggerInterrupts
+        f_nohalt = execute
+               .>> decode
+               .>> fetch
+               .>> incrementPC
+               .>> (fromFunction $ \c -> c { cpu_cycles = (cpu_cycles c) + 1 })
+               .>> updateHardwareRegisters
+               .>> triggerInterrupts
 
 execute :: Execute
 execute = fromFunction execute' .>>
@@ -120,7 +125,8 @@ powerUp = get reset CPU {
   cpu_fetch = Nothing,
   cpu_decode = Nothing,
   cpu_cycles = 0,
-  cpu_exception = Nothing
+  cpu_exception = Nothing,
+  cpu_halt = False
 }
 
 -- I'm sure these could be better written.

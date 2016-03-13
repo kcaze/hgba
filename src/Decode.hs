@@ -365,7 +365,7 @@ decodeTHUMB x
   | x .&. 0xF800 == 0x0000 = decodeLSL1' x
   | x .&. 0xFFC0 == 0x4080 = decodeLSL2' x
   | x .&. 0xF800 == 0x0800 = decodeLSR1' x
-  | x .&. 0xFFC0 == 0x40A0 = decodeLSR2' x
+  | x .&. 0xFFC0 == 0x40C0 = decodeLSR2' x
   | x .&. 0xF800 == 0x2000 = decodeMOV1' x
   | x .&. 0xFFC0 == 0x1C00 = decodeMOV2' x
   | x .&. 0xFF00 == 0x4600 = decodeMOV3' x

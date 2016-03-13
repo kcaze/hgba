@@ -38,7 +38,7 @@ enterException E_IRQ = do
   cpsr' <- cpsr
   (set processorMode (pure IRQ)
     .>> set spsr (pure cpsr')
-    .>> set lr pc
+    .>> set lr (pc .- 4)
     .>> set tFlag (pure False)
     .>> set iFlag (pure True)
     .>> set pc 0x18)
@@ -113,9 +113,9 @@ getProcessorMode cpu = if (mode == 0b01000) then User
 getMemory8 :: Address -> CPU -> Word32
 getMemory16 :: Address -> CPU -> Word32
 getMemory32 :: Address -> CPU -> Word32
-getMemory8 a cpu = read8 a (cpu_memory cpu) 
-getMemory16 a cpu = read16 a (cpu_memory cpu) 
-getMemory32 a cpu = read32 a (cpu_memory cpu) 
+getMemory8 = read8
+getMemory16 = read16
+getMemory32 = read32
 
 -- Pure CPU Setters
 setR0 x c = c { cpu_r0 = x }
@@ -172,7 +172,8 @@ setSPSR x c =
                IRQ        -> c { cpu_spsr_irq = x }
                Supervisor -> c { cpu_spsr_svc = x }
                Undefined  -> c { cpu_spsr_und = x }
-               _          -> error "Attempt to set SPSR in user or system mode."
+               _          -> error $ "Attempt to set SPSR in user or system mode." ++
+                                     " (PC = " ++ showHex (get pc c) ""
   where mode = getProcessorMode c
 
 [setNFlag, setZFlag, setCFlag, setVFlag, setIFlag, setFFlag, setTFlag] = map set bits
@@ -192,9 +193,9 @@ setProcessorMode m c = c { cpu_cpsr = ((getCPSR c) .&. complement 0x1F) .|. b }
 setMemory8 :: Address -> Word32 -> CPU -> CPU
 setMemory16 :: Address -> Word32 -> CPU -> CPU
 setMemory32 :: Address -> Word32 -> CPU -> CPU
-setMemory8 a w cpu = cpu { cpu_memory = write8 a w (cpu_memory cpu) }
-setMemory16 a w cpu = cpu { cpu_memory = write16 a w (cpu_memory cpu) }
-setMemory32 a w cpu = cpu { cpu_memory = write32 a w (cpu_memory cpu) }
+setMemory8 = write8
+setMemory16 = write16
+setMemory32 = write32
 
 -- Mutable CPU values
 [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15,
@@ -282,6 +283,7 @@ instance Show CPU where
         ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
         ++ "      cycles = " ++ show (cpu_cycles c) ++ "\n"
         ++ "   exception = " ++ show (cpu_exception c) ++ "\n"
+        ++ "        halt = " ++ show (cpu_halt c) ++ "\n"
         ++ "}"
 
 -- Detailed show.
@@ -335,4 +337,5 @@ showDetailed c = "CPU {\n"
         ++ "      decode = " ++ show (cpu_decode c) ++ "\n"
         ++ "      cycles = " ++ show (cpu_cycles c) ++ "\n"
         ++ "   exception = " ++ show (cpu_exception c) ++ "\n"
+        ++ "        halt = " ++ show (cpu_halt c) ++ "\n"
         ++ "}"

@@ -231,7 +231,8 @@ render cpu renderer = do
 ----------------
 triggerInterrupts :: Execute
 triggerInterrupts = fromFunction f
-  where f cpu = if testBit (readIO8 rIME id cpu) 0
+  where f cpu = if testBit (readIO8 rIME id cpu) 0 &&
+                   not (get iFlag cpu)
                 then run triggerVBlankInterrupt cpu
                 else cpu
 
@@ -241,5 +242,6 @@ triggerVBlankInterrupt = fromFunction f
   where f cpu = if testBit (readIO8 rIE id cpu) 0 &&
                    testBit (readIO8 rDISPSTAT id cpu) 3 &&
                    cpu_cycles cpu `mod` 70224 == 49280 -- TODO: Cycle accuracy
-                then run (enterException E_IRQ) (writeIO8 rIF (toggleBit 0 True) cpu)
+                then (run (enterException E_IRQ) (writeIO8 rIF (toggleBit 0 True) cpu))
+                     { cpu_halt = False }
                 else cpu

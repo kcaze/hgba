@@ -70,12 +70,15 @@ data CPU = CPU {
   cpu_fetch     :: !(Maybe Word32),
   cpu_decode    :: !(Maybe Instruction),
   cpu_cycles    :: !Word32,
-  cpu_exception :: !(Maybe Exception)
+  cpu_exception :: !(Maybe Exception),
+  cpu_halt :: Bool
 } deriving (Eq)
 
 instance MemoryRegion CPU where
   read8 a c = read8 a (cpu_memory c)
-  write8 a b c = c `seq` c { cpu_memory = write8 a b (cpu_memory c) }
+  write8 a b c = c `seq` if (a == 0x04000301)
+                         then c { cpu_halt = True }
+                         else c { cpu_memory = write8 a b (cpu_memory c) }
 
 -- Instruction types.
 

@@ -74,7 +74,7 @@ instance MemoryRegion IORAM where
     | a' == 0x004 = -- REG_DISPSTAT
         IORAM $ Map.insert a' ((read8 a' (IORAM m) .&. 0x7)
                                .|. (b .&. complement 0x7)) m
-    | a' == 0x006 || a' == 0x007 = IORAM m
+    | a' == 0x006 || a' == 0x007 = IORAM m -- REG_VCount read-only
     | otherwise = IORAM $ Map.insert a' b m
     where a' = a .&. 0x3FF
 
