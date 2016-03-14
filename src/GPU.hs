@@ -132,6 +132,29 @@ getBG256Color n cpu = read16 (addrBGPalette + fromIntegral (2*n)) cpu
 getOBJ256Color :: Int -> CPU -> Word32
 getOBJ256Color n cpu = read16 (addrOBJPalette + fromIntegral (2*n)) cpu
 
+
+data SpriteGFXMode = NormalGFXMode
+                   | SemiTransparentGFXMode
+                   | ObjWindowGFXMode
+  deriving (Eq, Show)
+
+data SpriteObjectMode = NormalObjectMode
+                      | AffineObjectMode
+                      | HiddenObjectMode
+                      | DoubleAffineObjectMode
+  deriving (Eq, Show)
+
+data Sprite = Sprite {
+  sprite_x :: Int,
+  sprite_y :: Int,
+  sprite_size :: (Int, Int),
+  sprite_tile :: Int,
+  sprite_palette :: Int,
+  sprite_256ColorEnabled :: Bool,
+  sprite_gfxMode :: SpriteGFXMode,
+  sprite_objectMode :: SpriteObjectMode
+} deriving (Eq, Show)
+
 getSprite :: Int -> CPU -> Sprite
 getSprite n cpu = Sprite {
     sprite_x = fromIntegral $ attr1 .&. 0x1FF,
@@ -150,11 +173,16 @@ getSprite n cpu = Sprite {
                        (0b10, 0b10) -> (2, 4)
                        (0b10, 0b11) -> (4, 8)
                        _ -> error "Invalid sprite size.",
-    sprite_mode = case (bitRange 10 11 attr0) of
-                       0b00 -> NormalSprite
-                       0b01 -> SemiTransparentSprite
-                       0b10 -> ObjWindowSprite
-                       0b11 -> error "Invalid sprite type.",
+    sprite_objectMode = case (bitRange 8 9 attr0) of
+                          0b00 -> NormalObjectMode
+                          0b01 -> AffineObjectMode
+                          0b10 -> HiddenObjectMode
+                          0b11 -> DoubleAffineObjectMode,
+    sprite_gfxMode = case (bitRange 10 11 attr0) of
+                       0b00 -> NormalGFXMode
+                       0b01 -> SemiTransparentGFXMode
+                       0b10 -> ObjWindowGFXMode
+                       0b11 -> error "Invalid sprite gfx mode.",
     sprite_tile = fromIntegral $ attr2 .&. 0x3FF,
     sprite_palette = fromIntegral $ attr2 .&. 0xF000,
     sprite_256ColorEnabled = testBit attr0 13
@@ -165,46 +193,48 @@ getSprite n cpu = Sprite {
         attr3 = read16 (address + 6) cpu
         address = addrOAM + (fromIntegral $ 8 * n)
 
-data SpriteMode = NormalSprite
-                | SemiTransparentSprite
-                | ObjWindowSprite
-  deriving (Eq, Show)
-
-data Sprite = Sprite {
-  sprite_x :: Int,
-  sprite_y :: Int,
-  sprite_size :: (Int, Int),
-  sprite_tile :: Int,
-  sprite_palette :: Int,
-  sprite_256ColorEnabled :: Bool,
-  sprite_mode :: SpriteMode
-} deriving (Eq, Show)
+spriteHidden :: Sprite -> Bool
+spriteHidden sprite = case sprite_objectMode sprite of
+                           HiddenObjectMode -> True
+                           _                -> False
 
 ---------------
 -- Renderers --
 ---------------
+
+renderNothing :: IO ()
+renderNothing = return ()
+
+render1dFor :: Int -> (Int -> IO()) -> IO()
+render1dFor n r = foldl (>>) renderNothing (map r [0..(n-1)])
+
+render2dFor :: Int -> Int -> ((Int, Int) -> IO()) -> IO()
+render2dFor w h r = foldl (>>) renderNothing (map r (liftA2 (,) [0..(w-1)] [0..(h-1)]))
+
 renderPixel :: Word32 -> (Int, Int) -> Renderer -> IO()
 renderPixel c (x, y) renderer = do
   let (r,g,b) = (bitRange 0 4 c <! 3, bitRange 5 9 c <! 3, bitRange 10 14 c <! 3)
   rendererDrawColor renderer $= V4 (fromIntegral r) (fromIntegral g) (fromIntegral b) 255
-  drawPoint renderer (P $ V2 (fromIntegral x) (fromIntegral y))
+  drawPoint renderer (P $ V2 (fromIntegral $ x `mod` 255) (fromIntegral $ y `mod` 255))
 
 render256ColorTile :: Address -> Int -> (Int, Int) -> CPU -> Renderer -> IO()
 render256ColorTile baseAddress n (x, y) cpu renderer = do
-  foldl (>>) (return ()) (map plot (liftA2 (,) [0..7] [0..7]))
+  render2dFor 8 8 plotPixel
   where address = baseAddress + (fromIntegral $ n * 0x20)
-        plot (dx, dy) = do
+        plotPixel (dx, dy) = do
           let pixel = read8 (address + fromIntegral dx + 8 * fromIntegral dy) cpu
           if pixel /= 0 then
             renderPixel (getOBJ256Color (fromIntegral pixel) cpu) (x + dx, y + dy) renderer
-          else return ()
+          else renderNothing
 
 renderSprite :: Int -> CPU -> Renderer -> IO()
 renderSprite n cpu renderer =
-  foldl (>>) (return ()) (map plot (liftA2 (,) [0..(w-1)] [0..(h-1)]))
+  if spriteHidden sprite
+    then renderNothing
+    else render2dFor w h plotTile
   where sprite = getSprite n cpu
         (w, h) = sprite_size sprite
-        plot (tx, ty) = do
+        plotTile (tx, ty) = do
           render256ColorTile (addrOBJTiles)
                              (sprite_tile sprite + 2*tx + 32*ty)
                              (sprite_x sprite + 8*tx, sprite_y sprite + 8*ty)
@@ -213,16 +243,19 @@ renderSprite n cpu renderer =
 
 renderSprites :: CPU -> Renderer -> IO()
 renderSprites cpu renderer = do
-  foldl (>>) (return ()) (map plot [0..10])
-  where plot n = renderSprite n cpu renderer
+  render1dFor 128 (\n -> renderSprite n cpu renderer)
 
 render :: CPU -> Renderer -> IO()
 render cpu renderer = do
   putStrLn "Rendering frame."
-  rendererDrawColor renderer $= V4 0 0 0 255
+  rendererDrawColor renderer $= V4 255 255 255 255
   clear renderer
 
-  if get oamEnabled cpu then renderSprites cpu renderer else return ()
+  if testBit (read8 rDISPCNT cpu) 7
+    then renderNothing
+    else do {
+      if get oamEnabled cpu then renderSprites cpu renderer else return ()
+    }
 
   present renderer
 
